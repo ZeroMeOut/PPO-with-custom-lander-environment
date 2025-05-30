@@ -12,6 +12,7 @@ from stable_baselines3.common.env_checker import check_env
 
  
 ## Made with the help of Gemini
+## Check dummy_test_code for the skeleton of the game
 ## Menu code from https://github.com/baraltech/Menu-System-PyGame
 def manual_mode():
     # In manual mode, run_game_frame needs to be called in a loop
@@ -19,6 +20,8 @@ def manual_mode():
     game_reset()  # Reset the game state before entering manual mode
     while True:
         result = run_game_frame("manual")
+        if result is not None:
+            print(f"Manual mode result: {result[1]}") ## Degugging reward value
         if result is None: # game_loop returns None if BACK is pressed
             break # Exit manual mode loop
 
@@ -38,10 +41,13 @@ def training_mode():
     check_env(env, warn=True, skip_render_check=True)
     env.render_mode = 'human'
 
-    model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=logdir, device='cpu')
-    TIMESTEPS = 10000
+    ## I got the congigs from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/ppo.yml
+    ## Thanks to this blog for linking the configs: https://antoinebrl.github.io/blog/rl-mars-lander/#reward-shaping
+    model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=logdir, device='cpu', n_steps=1024, 
+                gae_lambda=0.98, gamma=0.999, n_epochs=4, ent_coef=0.01)
+    TIMESTEPS = 1000000
     iters = 0
-    while iters < 1000:  # Run for 10 iterations
+    while iters < 10:  # Run for 10 iterations
         iters += 1
         print(f"Training iteration: {iters}")
         model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="PPO_Lander")
@@ -66,6 +72,7 @@ def training_mode():
         pygame.init()
     main_menu()
 
+## Test mode till a work in progress
 def test_mode():
     if not pygame.get_init():
         pygame.init()

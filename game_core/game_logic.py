@@ -21,10 +21,10 @@ class GameState:
         self.previous_distance_y = abs(self.player.y - self.target.y)
         self.previous_hypotenuse = math.sqrt(self.previous_distance_x ** 2 + self.previous_distance_y ** 2)
         self.final_reward = 3000.0
-        self.proportionality_factor_x = 0.2
-        self.proportionality_factor_y = 0.1
-        self.proportionality_factor_hypotenuse = 0.2
-        self.time_penalty = -0.0001
+        self.proportionality_factor_x = 20
+        self.proportionality_factor_y = 10
+        self.proportionality_factor_hypotenuse = 20
+        self.time_penalty = -0.001
 
     def reset(self):
         self.player.reset()
@@ -175,34 +175,31 @@ def run_game_frame(
         if gs.player.collided_with(gs.target):
             game_reset()
             done = True
-            reward += 200
+            reward = 100
             info["status"] = "landed_ok"
         else:
             display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
             game_reset()
             done = True
-            reward += -100 
+            reward = -100 
             info["status"] = "crashed"
 
     elif gs.player.y < -50:
         display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
         game_reset()
         done = True
-        reward += -100 
+        reward = -100 
         info["status"] = "flown_too_high"
 
     if gs.player.x < 0 or gs.player.x > 1280:
         game_reset()
         done = True 
-        reward += -100 
+        reward = -100 
         info["status"] = "out_of_horizontal_bounds"
 
     pygame.display.update() 
 
-    if mode == "training" or mode == "test":
-        observation: ndarray = np.array([gs.player.x, gs.player.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
-        clock.tick(60)  
-        return observation, reward, done, info
-    else:
-        clock.tick(60)
-        return True ## Pylance screaming at me here
+    observation: ndarray = np.array([gs.player.x, gs.player.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
+    clock.tick(60)
+    return observation, reward, done, info
+
