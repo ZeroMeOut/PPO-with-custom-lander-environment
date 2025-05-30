@@ -48,7 +48,7 @@ The manual mode for you to play the game, and the training to train the lander. 
 
 
 ## Random Thoughts
-First off, I was initially trying to use CNN to train this. But it's so damn stressful, I think the default encoder used my stable baseline might not be the greatest for this. I would try to make a custom one someday.
+First off, I was initially trying to use CNN to train this. But it's so damn stressful, I think the default encoder used by stable baseline might not be the greatest for this. I would try to make a custom one someday.
 
 Secondly, it is annoyingly long to fine-tune and train. I took like 20-25 tries to get a decently looking ep_rew_mean graph, and even then I kept running into [value loss explosion](https://medium.com/@kaige.yang0110/in-training-ppo-how-to-balance-value-loss-and-policy-loss-cbf10d9d6b86) because of the hyperparameters or rewards I was using (thank you Antoinebrl, you saved my time a lot). And lord, the bugs, I don't even want to start with that.
 
