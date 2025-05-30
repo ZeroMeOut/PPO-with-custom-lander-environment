@@ -11,7 +11,7 @@ from game_core.game_render import SCREEN, GAME_BG, PLAYER_THRUSTING_IMAGE, EXPLO
 class GameState:
     def __init__(self):
         self.player = GameObject(random.randint(20, 1200), -30, 0, 1, "player")
-        # self.target = GameObject(random.randint(20, 1200), 513, 0, 0, "target")
+        # self.target = GameObject(random.randint(20, 1200), 513, 0, 0, "target") ## This is the original line
         self.target = GameObject(590, 513, 0, 0, "target")
 
         self.is_left_pressed = False
