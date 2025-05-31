@@ -1,6 +1,8 @@
 
 # PPO with custom lander environment
-Recently I have been very interested in reinforcement learning, so I wanted to create a project around that. I built a custom lander game using pygame-ce and used the PPO implementation from stable-baseline-3. This is still a would in progress, but the manual mode and training are working at the moment.
+![Screenshot 2025-05-31 032530](https://github.com/user-attachments/assets/4eef797e-f016-47cf-af04-0f8900129b01)
+
+Recently, I have been very interested in reinforcement learning, so I wanted to create a project around that. I built a custom lander game using pygame-ce and used the PPO implementation from stable-baseline-3. This is still a work in progress, but the manual mode and training are currently working.
 
 
 
@@ -30,7 +32,7 @@ Recently I have been very interested in reinforcement learning, so I wanted to c
     ```bash
     python main_menu.py
     ```
-The manual mode for you to play the game, the training to train the lander. The testing is for well, testing, but still a work in progress
+The manual mode for you to play the game, and the training to train the lander. The testing is for well, testing, but still a work in progress
 
 
 
@@ -46,8 +48,8 @@ The manual mode for you to play the game, the training to train the lander. The 
 
 
 ## Random Thoughts
-First off, I was initalially trying to use CNN to train this. But it's so damn stressful, I think the default encoder used my stable baseline might not be the greatest for this. I would try to make a custom one someday.
+First off, I was initially trying to use CNN to train this. But it's so damn stressful, I think the default encoder used by stable baseline might not be the greatest for this. I would try to make a custom one someday.
 
-Secondly it is annoyingly long to finetune and train. I took like 20-25 tries to get a decently looking ep_rew_mean graph, and even then I kept running into [value loss explosion](https://medium.com/@kaige.yang0110/in-training-ppo-how-to-balance-value-loss-and-policy-loss-cbf10d9d6b86) because of the hyperparameters or rewards I was using (thank you Antoinebrl you saved my time a lot). And lord the bugs, I don't even want to start with that.
+Secondly, it is annoyingly long to fine-tune and train. I took like 20-25 tries to get a decently looking ep_rew_mean graph, and even then I kept running into [value loss explosion](https://medium.com/@kaige.yang0110/in-training-ppo-how-to-balance-value-loss-and-policy-loss-cbf10d9d6b86) because of the hyperparameters or rewards I was using (thank you Antoinebrl, you saved my time a lot). And lord, the bugs, I don't even want to start with that.
 
-Overall this is still a learning process for me, and even with all the rambling I am doing rn I still find building this fun.
+Overall, this is still a learning process for me, and even with all the rambling I am doing rn I still find building this fun.
