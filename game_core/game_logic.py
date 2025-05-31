@@ -14,17 +14,17 @@ class GameState:
         # self.target = GameObject(random.randint(20, 1200), 513, 0, 0, "target") ## This is the original line
         self.target = GameObject(590, 513, 0, 0, "target")
 
-        self.is_left_pressed = False
-        self.is_right_pressed = False
-        self.is_up_pressed = False
-        self.previous_distance_x = abs(self.player.x - self.target.x)
-        self.previous_distance_y = abs(self.player.y - self.target.y)
-        self.previous_hypotenuse = math.sqrt(self.previous_distance_x ** 2 + self.previous_distance_y ** 2)
-        self.final_reward = 3000.0
-        self.proportionality_factor_x = 20
-        self.proportionality_factor_y = 10
-        self.proportionality_factor_hypotenuse = 20
-        self.time_penalty = -0.001
+        self.is_left_pressed: bool = False
+        self.is_right_pressed: bool = False
+        self.is_up_pressed: bool = False
+        self.previous_distance_x: float = abs(self.player.x - self.target.x)
+        self.previous_distance_y: float = abs(self.player.y - self.target.y)
+        self.previous_hypotenuse: float = math.sqrt(self.previous_distance_x ** 2 + self.previous_distance_y ** 2)
+        # self.final_reward = 3000.0
+        self.proportionality_factor_x: float = 20
+        self.proportionality_factor_y: float = 10
+        self.proportionality_factor_hypotenuse: float = 20
+        self.time_penalty: float = -0.001
 
     def reset(self):
         self.player.reset()
