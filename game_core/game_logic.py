@@ -8,6 +8,65 @@ from typing import Optional, Tuple, Dict, Any
 from game_core.game_objects import GameObject, Button
 from game_core.game_render import SCREEN, GAME_BG, PLAYER_THRUSTING_IMAGE, EXPLOSION_IMAGE, clock, display_image, get_font
 
+## You can change this to whatever
+def calculate_reward_and_done(gs):
+        # Distance based rewards
+        current_x_distance: float = abs(gs.player.x - gs.target.x)
+        current_y_distance: float = abs(gs.player.y - gs.target.y)
+        current_hypotenuse: float = math.sqrt(current_x_distance ** 2 + current_y_distance ** 2)
+
+        if current_y_distance <= gs.previous_distance_y:
+            reward: float = gs.proportionality_factor_y * (gs.previous_distance_y - current_y_distance)
+        else:
+            reward: float = - gs.proportionality_factor_y * (current_y_distance - gs.previous_distance_y) * 0.5
+
+        if current_x_distance <= gs.previous_distance_x:
+            reward += gs.proportionality_factor_x * (gs.previous_distance_x - current_x_distance)
+        else:
+            reward += -gs.proportionality_factor_x * (current_x_distance - gs.previous_distance_x) * 0.5
+
+        if current_hypotenuse <= gs.previous_hypotenuse:
+            reward += gs.proportionality_factor_hypotenuse * (gs.previous_hypotenuse - current_hypotenuse)
+
+        # Time penalty
+        penalty: float = gs.final_reward * gs.time_penalty 
+        gs.final_reward += penalty
+
+        done: bool = False
+        gs.previous_distance_x = current_x_distance
+        gs.previous_distance_y = current_y_distance
+        gs.previous_hypotenuse = current_hypotenuse
+        info: Dict[str, Any] = {}
+
+        if gs.player.y > 513:
+            if gs.player.collided_with(gs.target):
+                game_reset()
+                done = True
+                reward = 100
+                info["status"] = "landed_ok"
+            else:
+                display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
+                game_reset()
+                done = True
+                reward = -100 
+                info["status"] = "crashed"
+
+        elif gs.player.y < -50:
+            display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
+            game_reset()
+            done = True
+            reward = -100 
+            info["status"] = "flown_too_high"
+
+        if gs.player.x < 0 or gs.player.x > 1280:
+            game_reset()
+            done = True 
+            reward = -100 
+            info["status"] = "out_of_horizontal_bounds"
+
+        return reward, done, info
+
+
 class GameState:
     def __init__(self):
         self.player = GameObject(random.randint(20, 1200), -30, 0, 1, "player")
@@ -142,60 +201,62 @@ def run_game_frame(
     else:
         gs.player.display(SCREEN)
 
-    ## Distance based rewards
-    current_x_distance: float = abs(gs.player.x - gs.target.x)
-    current_y_distance: float = abs(gs.player.y - gs.target.y)
-    current_hypotenuse: float = math.sqrt(current_x_distance ** 2 + current_y_distance ** 2)
+    # ## Distance based rewards
+    # current_x_distance: float = abs(gs.player.x - gs.target.x)
+    # current_y_distance: float = abs(gs.player.y - gs.target.y)
+    # current_hypotenuse: float = math.sqrt(current_x_distance ** 2 + current_y_distance ** 2)
 
-    if current_y_distance <= gs.previous_distance_y:
-        reward: float = gs.proportionality_factor_y * (gs.previous_distance_y - current_y_distance)
-    else:
-        reward: float = - gs.proportionality_factor_y * (current_y_distance - gs.previous_distance_y) * 0.5
+    # if current_y_distance <= gs.previous_distance_y:
+    #     reward: float = gs.proportionality_factor_y * (gs.previous_distance_y - current_y_distance)
+    # else:
+    #     reward: float = - gs.proportionality_factor_y * (current_y_distance - gs.previous_distance_y) * 0.5
 
-    if current_x_distance <= gs.previous_distance_x:
-        reward += gs.proportionality_factor_x * (gs.previous_distance_x - current_x_distance)
-    else:
-        reward += -gs.proportionality_factor_x * (current_x_distance - gs.previous_distance_x) * 0.5
+    # if current_x_distance <= gs.previous_distance_x:
+    #     reward += gs.proportionality_factor_x * (gs.previous_distance_x - current_x_distance)
+    # else:
+    #     reward += -gs.proportionality_factor_x * (current_x_distance - gs.previous_distance_x) * 0.5
 
-    if current_hypotenuse <= gs.previous_hypotenuse:
-        reward += gs.proportionality_factor_hypotenuse * (gs.previous_hypotenuse - current_hypotenuse)
+    # if current_hypotenuse <= gs.previous_hypotenuse:
+    #     reward += gs.proportionality_factor_hypotenuse * (gs.previous_hypotenuse - current_hypotenuse)
 
 
-    ## Time penalty
-    penalty: float = gs.final_reward * gs.time_penalty 
-    gs.final_reward += penalty
+    # ## Time penalty
+    # penalty: float = gs.final_reward * gs.time_penalty 
+    # gs.final_reward += penalty
 
-    done: bool = False
-    gs.previous_distance_x = current_x_distance
-    gs.previous_distance_y = current_y_distance
-    gs.previous_hypotenuse = current_hypotenuse
-    info: Dict[str, Any] = {}
+    # done: bool = False
+    # gs.previous_distance_x = current_x_distance
+    # gs.previous_distance_y = current_y_distance
+    # gs.previous_hypotenuse = current_hypotenuse
+    # info: Dict[str, Any] = {}
 
-    if gs.player.y > 513:
-        if gs.player.collided_with(gs.target):
-            game_reset()
-            done = True
-            reward = 100
-            info["status"] = "landed_ok"
-        else:
-            display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
-            game_reset()
-            done = True
-            reward = -100 
-            info["status"] = "crashed"
+    # if gs.player.y > 513:
+    #     if gs.player.collided_with(gs.target):
+    #         game_reset()
+    #         done = True
+    #         reward = 100
+    #         info["status"] = "landed_ok"
+    #     else:
+    #         display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
+    #         game_reset()
+    #         done = True
+    #         reward = -100 
+    #         info["status"] = "crashed"
 
-    elif gs.player.y < -50:
-        display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
-        game_reset()
-        done = True
-        reward = -100 
-        info["status"] = "flown_too_high"
+    # elif gs.player.y < -50:
+    #     display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
+    #     game_reset()
+    #     done = True
+    #     reward = -100 
+    #     info["status"] = "flown_too_high"
 
-    if gs.player.x < 0 or gs.player.x > 1280:
-        game_reset()
-        done = True 
-        reward = -100 
-        info["status"] = "out_of_horizontal_bounds"
+    # if gs.player.x < 0 or gs.player.x > 1280:
+    #     game_reset()
+    #     done = True 
+    #     reward = -100 
+    #     info["status"] = "out_of_horizontal_bounds"
+    
+    reward, done, info = calculate_reward_and_done(gs)
 
     pygame.display.update() 
 
