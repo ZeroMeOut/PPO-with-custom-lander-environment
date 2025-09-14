@@ -32,8 +32,9 @@ Recently, I have been very interested in reinforcement learning, so I wanted to 
     ```bash
     python main_menu.py
     ```
-The manual mode for you to play the game, and the training to train the lander. The testing is for well, testing, but still a work in progress
-
+The manual mode for you to play the game, and the training to train the lander. The testing is for well, testing.
+You can customise the reward function in the ``game_logic.py`` file to your liking, and the training in the ``main_menu.py`` file in the training_mode function.
+I would advise going through the code to try understanding what is going on. There are a decent amount of comments, and if you have any questions feel free to dm me on twitter or discord @ zeromeout :)
 
 
 
