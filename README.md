@@ -2,7 +2,7 @@
 # PPO with custom lander environment
 ![Screenshot 2025-05-31 032530](https://github.com/user-attachments/assets/4eef797e-f016-47cf-af04-0f8900129b01)
 
-Recently, I have been very interested in reinforcement learning, so I wanted to create a project around that. I built a custom lander game using pygame-ce and used the PPO implementation from stable-baseline-3. This is still a work in progress, but the manual mode and training are currently working.
+Recently, I have been very interested in reinforcement learning, so I wanted to create a project around that. I built a custom lander game using pygame-ce and used the PPO implementation from stable-baseline-3. This is still a work in progress, but all the modes currently working.
 
 
 
