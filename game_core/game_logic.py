@@ -9,6 +9,7 @@ from game_core.game_objects import GameObject, Button
 from game_core.game_render import SCREEN, GAME_BG, PLAYER_THRUSTING_IMAGE, EXPLOSION_IMAGE, clock, display_image, get_font
 
 ## You can change this to whatever
+## There are probably better ways to do this
 def calculate_reward_and_done(gs):
         # Distance based rewards
         current_x_distance: float = abs(gs.player.x - gs.target.x)
@@ -71,7 +72,7 @@ class GameState:
     def __init__(self):
         self.player = GameObject(random.randint(20, 1200), -30, 0, 1, "player")
         # self.target = GameObject(random.randint(20, 1200), 513, 0, 0, "target") ## This is the original line
-        self.target = GameObject(590, 513, 0, 0, "target")
+        self.target = GameObject(590, 513, 0, 0, "target") ## Incase you want to always land in the same spot
 
         self.is_left_pressed: bool = False
         self.is_right_pressed: bool = False
@@ -90,7 +91,7 @@ class GameState:
         self.target.reset()
         self.player.x = random.randint(200, 1200)
         # self.target.x = random.randint(20, 1200)
-        self.target.x = 590
+        self.target.x = 590  ## Incase you want to always land in the same spot
         self.player.rect.topleft = (int(self.player.x), int(self.player.y))
         self.target.rect.topleft = (int(self.target.x), int(self.target.y))
         self.is_left_pressed = False
