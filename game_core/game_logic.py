@@ -1,3 +1,4 @@
+import dis
 import sys
 import math
 import random
@@ -17,21 +18,28 @@ def calculate_reward_and_done(gs):
         current_hypotenuse: float = math.sqrt(current_x_distance ** 2 + current_y_distance ** 2)
 
         if current_y_distance <= gs.previous_distance_y:
-            reward: float = gs.proportionality_factor_y * (gs.previous_distance_y - current_y_distance)
+            distance_y: float = gs.previous_distance_y - current_y_distance
+            reward: float = gs.proportionality_factor_y * distance_y
         else:
-            reward: float = - gs.proportionality_factor_y * (current_y_distance - gs.previous_distance_y) * 0.5
+            distance_y: float = current_y_distance - gs.previous_distance_y
+            reward: float = - gs.proportionality_factor_y * distance_y * 0.5
 
         if current_x_distance <= gs.previous_distance_x:
-            reward += gs.proportionality_factor_x * (gs.previous_distance_x - current_x_distance)
+            distance_x: float = gs.previous_distance_x - current_x_distance
+            reward += gs.proportionality_factor_x * distance_x
         else:
-            reward += -gs.proportionality_factor_x * (current_x_distance - gs.previous_distance_x) * 0.5
+            distance_x: float = current_x_distance - gs.previous_distance_x
+            reward += -gs.proportionality_factor_x * distance_x * 0.5
 
         if current_hypotenuse <= gs.previous_hypotenuse:
-            reward += gs.proportionality_factor_hypotenuse * (gs.previous_hypotenuse - current_hypotenuse)
+            distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
+            reward += gs.proportionality_factor_hypotenuse * distance_hypotenuse
+        else:
+            distance_hypotenuse: float = current_hypotenuse - gs.previous_hypotenuse
 
-        # Time penalty
-        penalty: float = gs.final_reward * gs.time_penalty 
-        gs.final_reward += penalty
+        ## Acceration based rewards
+        current_acceleration_h: float = distance_hypotenuse/60/60
+
 
         done: bool = False
         gs.previous_distance_x = current_x_distance
@@ -100,7 +108,7 @@ class GameState:
         self.previous_distance_x = abs(self.player.x - self.target.x)
         self.previous_distance_y = abs(self.player.y - self.target.y)
         self.previous_hypotenuse = math.sqrt(self.previous_distance_x ** 2 + self.previous_distance_y ** 2)
-        self.final_reward = 2000.0
+        # self.final_reward = 2000.0
 
 game_state = GameState()
 
