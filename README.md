@@ -15,15 +15,9 @@ Recently, I have been very interested in reinforcement learning, so I wanted to 
     cd PPO-with-custom-lander-environment
     ```
 
-2.  **Create a virtual environment (recommended):**
+2.  **UV stuff:**
     ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows: `venv\Scripts\activate`
-    ```
-
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
+    uv sync
     ```
 
 

@@ -23,7 +23,8 @@ def manual_mode():
     while True:
         result = run_game_frame("manual")
         if result is not None:
-            print(f"Manual mode result: {result[1]}") ## Degugging reward value
+            continue
+            # print(f"Manual mode result: {result[1]}") ## Degugging reward value
         if result is None: # game_loop returns None if BACK is pressed
             break # Exit manual mode loop
 
@@ -45,8 +46,8 @@ def training_mode():
 
     ## I got the congigs from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/ppo.yml
     ## Thanks to this blog for linking the configs: https://antoinebrl.github.io/blog/rl-mars-lander/#reward-shaping
-    model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=logdir, device='cpu', n_steps=1024, 
-                gae_lambda=0.98, gamma=0.999, n_epochs=4, ent_coef=0.01)
+    model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=logdir, device='cpu', n_steps=2048, 
+                gae_lambda=0.98, gamma=0.999, n_epochs=4, ent_coef=0.01, vf_coef=0.5)
     TIMESTEPS = 100000
     iters = 0
     while iters < 10:  # Run for 10 iterations

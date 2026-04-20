@@ -1,5 +1,4 @@
 import gymnasium as gym
-import pygame
 import numpy as np
 from gymnasium import spaces
 from gymnasium.utils import seeding
@@ -24,7 +23,7 @@ class LanderEnvironment(gym.Env):
         self.action_space = spaces.Discrete(6)
         
         ## Observation space: 2D array with 6 elements
-        self.observation_space = spaces.Box(low=np.array([-100, -100, -5.0, -5.0, 0, 0]),     
+        self.observation_space = spaces.Box(low=np.array([-1380, -650, -5.0, -5.0, 0, 0]),     
                                             high=np.array([1380, 650, 5.0, 5.0, 1280, 600]),
                                             shape=(6,), dtype=np.float64)
         

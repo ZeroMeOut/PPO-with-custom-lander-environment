@@ -1,0 +1,13 @@
+[project]
+name = "ppo-with-custom-lander-environment"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gymnasium>=1.1.1",
+    "numpy==2.2.6",
+    "pygame==2.6.1",
+    "stable-baselines3==2.6.0",
+    "tensorboard>=2.20.0",
+]

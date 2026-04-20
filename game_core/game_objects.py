@@ -1,7 +1,4 @@
 import pygame
-import os
-
-
 
 ## This is from https://github.com/phildecroos/lunar_lander/blob/master/lunar_lander.py
 class GameObject(pygame.sprite.Sprite):

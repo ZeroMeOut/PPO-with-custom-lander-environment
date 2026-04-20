@@ -1,4 +1,3 @@
-import dis
 import sys
 import math
 import random
@@ -17,28 +16,29 @@ def calculate_reward_and_done(gs):
         current_y_distance: float = abs(gs.player.y - gs.target.y)
         current_hypotenuse: float = math.sqrt(current_x_distance ** 2 + current_y_distance ** 2)
 
-        if current_y_distance <= gs.previous_distance_y:
-            distance_y: float = gs.previous_distance_y - current_y_distance
-            reward: float = gs.proportionality_factor_y * distance_y
-        else:
-            distance_y: float = current_y_distance - gs.previous_distance_y
-            reward: float = - gs.proportionality_factor_y * distance_y * 0.5
+        # if current_y_distance <= gs.previous_distance_y:
+        #     distance_y: float = gs.previous_distance_y - current_y_distance
+        #     reward: float = gs.proportionality_factor_y * distance_y
+        # else:
+        #     distance_y: float = current_y_distance - gs.previous_distance_y
+        #     reward: float = - gs.proportionality_factor_y * distance_y * 0.5
 
-        if current_x_distance <= gs.previous_distance_x:
-            distance_x: float = gs.previous_distance_x - current_x_distance
-            reward += gs.proportionality_factor_x * distance_x
-        else:
-            distance_x: float = current_x_distance - gs.previous_distance_x
-            reward += -gs.proportionality_factor_x * distance_x * 0.5
+        # if current_x_distance <= gs.previous_distance_x:
+        #     distance_x: float = gs.previous_distance_x - current_x_distance
+        #     reward += gs.proportionality_factor_x * distance_x
+        # else:
+        #     distance_x: float = current_x_distance - gs.previous_distance_x
+        #     reward += -gs.proportionality_factor_x * distance_x * 0.5
 
         if current_hypotenuse <= gs.previous_hypotenuse:
             distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
-            reward += gs.proportionality_factor_hypotenuse * distance_hypotenuse
+            reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
         else:
             distance_hypotenuse: float = current_hypotenuse - gs.previous_hypotenuse
+            reward: float = -gs.proportionality_factor_hypotenuse * distance_hypotenuse * 0.5
 
         ## Acceration based rewards
-        current_acceleration_h: float = distance_hypotenuse/60/60
+        # current_acceleration_h: float = distance_hypotenuse/60/60
 
 
         done: bool = False
@@ -79,8 +79,8 @@ def calculate_reward_and_done(gs):
 class GameState:
     def __init__(self):
         self.player = GameObject(random.randint(20, 1200), -30, 0, 1, "player")
-        # self.target = GameObject(random.randint(20, 1200), 513, 0, 0, "target") ## This is the original line
-        self.target = GameObject(590, 513, 0, 0, "target") ## Incase you want to always land in the same spot
+        self.target = GameObject(random.randint(20, 1200), 513, 0, 0, "target") ## This is the original line
+        # self.target = GameObject(590, 513, 0, 0, "target") ## Incase you want to always land in the same spot
 
         self.is_left_pressed: bool = False
         self.is_right_pressed: bool = False
@@ -98,8 +98,8 @@ class GameState:
         self.player.reset()
         self.target.reset()
         self.player.x = random.randint(200, 1200)
-        # self.target.x = random.randint(20, 1200)
-        self.target.x = 590  ## Incase you want to always land in the same spot
+        self.target.x = random.randint(20, 1200)
+        # self.target.x = 590  ## Incase you want to always land in the same spot
         self.player.rect.topleft = (int(self.player.x), int(self.player.y))
         self.target.rect.topleft = (int(self.target.x), int(self.target.y))
         self.is_left_pressed = False
@@ -209,67 +209,12 @@ def run_game_frame(
         SCREEN.blit(PLAYER_THRUSTING_IMAGE, (int(gs.player.x), int(gs.player.y)))
     else:
         gs.player.display(SCREEN)
-
-    # ## Distance based rewards
-    # current_x_distance: float = abs(gs.player.x - gs.target.x)
-    # current_y_distance: float = abs(gs.player.y - gs.target.y)
-    # current_hypotenuse: float = math.sqrt(current_x_distance ** 2 + current_y_distance ** 2)
-
-    # if current_y_distance <= gs.previous_distance_y:
-    #     reward: float = gs.proportionality_factor_y * (gs.previous_distance_y - current_y_distance)
-    # else:
-    #     reward: float = - gs.proportionality_factor_y * (current_y_distance - gs.previous_distance_y) * 0.5
-
-    # if current_x_distance <= gs.previous_distance_x:
-    #     reward += gs.proportionality_factor_x * (gs.previous_distance_x - current_x_distance)
-    # else:
-    #     reward += -gs.proportionality_factor_x * (current_x_distance - gs.previous_distance_x) * 0.5
-
-    # if current_hypotenuse <= gs.previous_hypotenuse:
-    #     reward += gs.proportionality_factor_hypotenuse * (gs.previous_hypotenuse - current_hypotenuse)
-
-
-    # ## Time penalty
-    # penalty: float = gs.final_reward * gs.time_penalty 
-    # gs.final_reward += penalty
-
-    # done: bool = False
-    # gs.previous_distance_x = current_x_distance
-    # gs.previous_distance_y = current_y_distance
-    # gs.previous_hypotenuse = current_hypotenuse
-    # info: Dict[str, Any] = {}
-
-    # if gs.player.y > 513:
-    #     if gs.player.collided_with(gs.target):
-    #         game_reset()
-    #         done = True
-    #         reward = 100
-    #         info["status"] = "landed_ok"
-    #     else:
-    #         display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
-    #         game_reset()
-    #         done = True
-    #         reward = -100 
-    #         info["status"] = "crashed"
-
-    # elif gs.player.y < -50:
-    #     display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
-    #     game_reset()
-    #     done = True
-    #     reward = -100 
-    #     info["status"] = "flown_too_high"
-
-    # if gs.player.x < 0 or gs.player.x > 1280:
-    #     game_reset()
-    #     done = True 
-    #     reward = -100 
-    #     info["status"] = "out_of_horizontal_bounds"
     
     reward, done, info = calculate_reward_and_done(gs)
 
     pygame.display.update() 
 
-    observation: ndarray = np.array([gs.player.x, gs.player.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
+    observation: ndarray = np.array([gs.player.x - gs.target.x, gs.player.y - gs.target.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
     clock.tick(60)
     return observation, reward, done, info
 
