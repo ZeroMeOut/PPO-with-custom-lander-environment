@@ -26,7 +26,7 @@ Recently, I have been very interested in reinforcement learning, so I wanted to 
     ```bash
     python main_menu.py
     ```
-The manual mode for you to play the game, and the training to train the lander. The testing is for well, testing, but still a work in progress
+The manual mode for you to play the game, and the training to train the lander. The testing is for well, testing.
 
 
 
