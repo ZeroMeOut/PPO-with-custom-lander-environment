@@ -4,7 +4,7 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 from typing import Any, Dict, List, Tuple, Union, Optional
 
-from game_core.game_logic import run_game_frame, game_reset, get_observation
+from game_core.game_logic import run_game_frame, GameState
 
 
 ## From https://stable-baselines3.readthedocs.io/en/master/guide/custom_env.html
@@ -23,6 +23,12 @@ class LanderEnvironment(gym.Env):
         self.max_episode_steps = max_episode_steps
         self._elapsed_steps: int = 0
 
+        ## Each env owns its game state. It used to be a module-level singleton,
+        ## so every LanderEnvironment shared one lander and one target: two envs
+        ## in one process silently corrupted each other, which ruled out
+        ## make_vec_env / DummyVecEnv entirely.
+        self.game_state = GameState()
+
         ## Define action and observation space
         ## Action space: 0: left, 1: right, 2: up, 3: upleft, 4: upright, 5: do nothing
         self.action_space = spaces.Discrete(6)
@@ -40,7 +46,7 @@ class LanderEnvironment(gym.Env):
         return [seed]
     
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        result: Optional[Tuple[np.ndarray, float, bool, Dict[str, Any]]] = run_game_frame("training", action)
+        result: Optional[Tuple[np.ndarray, float, bool, Dict[str, Any]]] = run_game_frame(self.game_state, "training", action)
         if result is None:
             ## Provide default values if game_loop returns None
             observation: np.ndarray = np.zeros(6, dtype=np.float64)
@@ -64,12 +70,14 @@ class LanderEnvironment(gym.Env):
         options: Optional[Dict[str, Any]] = None
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
-        game_reset()
+        if seed is not None:
+            self.game_state.seed(seed)
+        self.game_state.reset()
         self._elapsed_steps = 0
         ## Read the freshly reset state directly. Stepping a frame here with a
         ## hardcoded action meant every episode opened with a thrust the agent
         ## never chose, so this never returned the actual initial state.
-        observation: np.ndarray = get_observation()
+        observation: np.ndarray = self.game_state.get_observation()
         self.current_observation = observation
         return observation, {} # Gym 0.26+ reset returns (observation, info)
 
