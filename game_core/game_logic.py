@@ -18,6 +18,15 @@ RENDER_ENABLED: bool = False
 RANDOM_TARGET: bool = True
 STATIC_TARGET_X: int = 590
 
+## How an episode ends. These were +/-100 while distance shaping accumulated to
+## roughly 10,000 over a descent, so landing rather than crashing was worth
+## about 5% of an episode's return and there was little pressure to be precise.
+## Raising them, together with the lower shaping weight in GameState, makes the
+## outcome the dominant term and keeps returns small enough that the value
+## function is not trying to fit five-figure numbers.
+LANDING_REWARD: float = 1000.0
+CRASH_PENALTY: float = -1000.0
+
 def set_render_enabled(enabled: bool) -> None:
     global RENDER_ENABLED
     RENDER_ENABLED = enabled
@@ -73,20 +82,20 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         if gs.player.y > 513:
             if gs.player.collided_with(gs.target):
                 done = True
-                reward = 100
+                reward = LANDING_REWARD
                 info["status"] = "landed_ok"
             else:
                 if drawing:
                     display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
                 done = True
-                reward = -100
+                reward = CRASH_PENALTY
                 info["status"] = "crashed"
 
         elif gs.player.y < -50:
             if drawing:
                 display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
             done = True
-            reward = -100
+            reward = CRASH_PENALTY
             info["status"] = "flown_too_high"
 
         ## elif, not if: now that this reads the real position rather than a
@@ -94,7 +103,7 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         ## outcome instead of being relabelled out of bounds.
         elif gs.player.x < 0 or gs.player.x > 1280:
             done = True
-            reward = -100
+            reward = CRASH_PENALTY
             info["status"] = "out_of_horizontal_bounds"
 
         return reward, done, info
@@ -119,7 +128,9 @@ class GameState:
         # self.final_reward = 3000.0
         self.proportionality_factor_x: float = 20
         self.proportionality_factor_y: float = 10
-        self.proportionality_factor_hypotenuse: float = 20
+        ## Lowered from 20 alongside the larger terminal rewards above: shaping
+        ## should guide the descent, not dwarf the outcome of it.
+        self.proportionality_factor_hypotenuse: float = 5
         self.time_penalty: float = -0.001
 
     def seed(self, seed: int) -> None:
