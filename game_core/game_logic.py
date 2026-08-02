@@ -8,6 +8,10 @@ from typing import Optional, Tuple, Dict, Any
 from game_core.game_objects import GameObject, Button
 from game_core.game_render import SCREEN, GAME_BG, PLAYER_THRUSTING_IMAGE, EXPLOSION_IMAGE, clock, display_image, get_font
 
+## Set to True to watch training play out at 60 FPS instead of collecting
+## rollouts as fast as the machine allows. Manual and test modes always render.
+WATCH_TRAINING: bool = False
+
 ## You can change this to whatever
 ## There are probably better ways to do this
 def calculate_reward_and_done(gs):
@@ -213,9 +217,14 @@ def run_game_frame(
     
     reward, done, info = calculate_reward_and_done(gs)
 
-    pygame.display.update() 
+    ## Flipping the display and capping at 60 FPS are display concerns. Applying
+    ## them to training pinned rollout collection to ~62 steps/sec, which is
+    ## about 4.5 hours for the 1M timesteps training_mode runs. Set
+    ## WATCH_TRAINING if you would rather watch than train quickly.
+    if mode != "training" or WATCH_TRAINING:
+        pygame.display.update()
+        clock.tick(60)
 
     observation: ndarray = np.array([gs.player.x - gs.target.x, gs.player.y - gs.target.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
-    clock.tick(60)
     return observation, reward, done, info
 
