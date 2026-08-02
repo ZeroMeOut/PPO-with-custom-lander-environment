@@ -70,6 +70,8 @@ class LanderEnvironment(gym.Env):
         options: Optional[Dict[str, Any]] = None
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
+        if seed is not None:
+            self.game_state.seed(seed)
         self.game_state.reset()
         self._elapsed_steps = 0
         ## Read the freshly reset state directly. Stepping a frame here with a

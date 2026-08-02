@@ -26,10 +26,6 @@ def set_random_target(random_target: bool) -> None:
     global RANDOM_TARGET
     RANDOM_TARGET = random_target
 
-def _target_x() -> int:
-    ## Read at call time so menu choices apply to the next reset.
-    return random.randint(20, 1200) if RANDOM_TARGET else STATIC_TARGET_X
-
 ## You can change this to whatever
 ## There are probably better ways to do this
 def calculate_reward_and_done(gs, drawing: bool = True):
@@ -105,9 +101,14 @@ def calculate_reward_and_done(gs, drawing: bool = True):
 
 
 class GameState:
-    def __init__(self):
-        self.player = GameObject(random.randint(20, 1200), -30, 0, 1, "player")
-        self.target = GameObject(_target_x(), 513, 0, 0, "target")
+    def __init__(self, seed: Optional[int] = None):
+        ## Own RNG rather than the global random module. With the global one,
+        ## LanderEnvironment.reset(seed=...) seeded gymnasium's np_random while
+        ## the game kept drawing from an unrelated stream, so seeding did
+        ## nothing and runs were never reproducible.
+        self.rng = random.Random(seed)
+        self.player = GameObject(self.rng.randint(20, 1200), -30, 0, 1, "player")
+        self.target = GameObject(self._target_x(), 513, 0, 0, "target")
 
         self.is_left_pressed: bool = False
         self.is_right_pressed: bool = False
@@ -121,11 +122,19 @@ class GameState:
         self.proportionality_factor_hypotenuse: float = 20
         self.time_penalty: float = -0.001
 
+    def seed(self, seed: int) -> None:
+        """Reseed the game RNG so the next reset is reproducible."""
+        self.rng.seed(seed)
+
+    def _target_x(self) -> int:
+        ## Read at call time so menu choices apply to the next reset.
+        return self.rng.randint(20, 1200) if RANDOM_TARGET else STATIC_TARGET_X
+
     def reset(self):
         self.player.reset()
         self.target.reset()
-        self.player.x = random.randint(200, 1200)
-        self.target.x = _target_x()
+        self.player.x = self.rng.randint(200, 1200)
+        self.target.x = self._target_x()
         self.player.rect.topleft = (int(self.player.x), int(self.player.y))
         self.target.rect.topleft = (int(self.target.x), int(self.target.y))
         self.is_left_pressed = False
