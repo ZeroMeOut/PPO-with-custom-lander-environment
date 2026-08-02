@@ -5,7 +5,7 @@ import glob
 import pygame
 import numpy as np
 from game_core.game_objects import Button
-from game_core.game_logic import run_game_frame, game_reset 
+from game_core.game_logic import run_game_frame, game_reset, set_render_enabled, set_random_target
 from game_core.game_render import SCREEN, get_font, BG, quit_pygame
 
 from stable_baselines3 import PPO
@@ -16,7 +16,70 @@ from stable_baselines3.common.env_checker import check_env
 ## Made with the help of Gemini
 ## Check dummy_test_code for the skeleton of the game
 ## Menu code from https://github.com/baraltech/Menu-System-PyGame
+def options_screen(title, toggles, start_label="START", extra_lines=()):
+    """Screen of on/off options shown before a mode starts.
+
+    toggles: list of (key, label, default) describing each option.
+    Returns {key: bool} once the user starts, or None if they back out.
+    """
+    values = {key: default for key, _, default in toggles}
+
+    while True:
+        SCREEN.fill("black")
+
+        TITLE_TEXT = get_font(50).render(title, True, "#b68f40")
+        SCREEN.blit(TITLE_TEXT, TITLE_TEXT.get_rect(center=(640, 80)))
+
+        for i, line in enumerate(extra_lines):
+            LINE_TEXT = get_font(25).render(line, True, "Gray")
+            SCREEN.blit(LINE_TEXT, LINE_TEXT.get_rect(center=(640, 140 + i * 30)))
+
+        MOUSE_POS = pygame.mouse.get_pos()
+        top = 140 + len(extra_lines) * 30 + 50
+
+        buttons = []
+        for i, (key, label, _) in enumerate(toggles):
+            on = values[key]
+            button = Button(image=None, pos=(640, top + i * 60),
+                            text_input=f"{label}: {'ON' if on else 'OFF'}",
+                            font=get_font(32),
+                            base_color="Green" if on else "Red", hovering_color="White")
+            button.changeColor(MOUSE_POS)
+            button.update(SCREEN)
+            buttons.append((key, button))
+
+        y = top + len(toggles) * 60 + 40
+        START_BUTTON = Button(image=None, pos=(640, y), text_input=start_label,
+                              font=get_font(40), base_color="Green", hovering_color="White")
+        BACK_BUTTON = Button(image=None, pos=(640, y + 65), text_input="BACK",
+                             font=get_font(40), base_color="White", hovering_color="Green")
+        for button in (START_BUTTON, BACK_BUTTON):
+            button.changeColor(MOUSE_POS)
+            button.update(SCREEN)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for key, button in buttons:
+                    if button.checkForInput(MOUSE_POS):
+                        values[key] = not values[key]
+                if START_BUTTON.checkForInput(MOUSE_POS):
+                    return values
+                if BACK_BUTTON.checkForInput(MOUSE_POS):
+                    return None
+
+        pygame.display.update()
+
 def manual_mode():
+    options = options_screen("MANUAL MODE",
+                             [("random_target", "Random target position", True)],
+                             start_label="PLAY")
+    if options is None:
+        return  # Back to main menu
+    set_random_target(options["random_target"])
+
     # In manual mode, run_game_frame needs to be called in a loop
     # and handle its own events.
     game_reset()  # Reset the game state before entering manual mode
@@ -34,15 +97,28 @@ def training_mode():
     if not pygame.get_init():
         pygame.init()
 
+    options = options_screen("TRAINING OPTIONS", [
+        ("render", "Render while training (much slower)", False),
+        ("random_target", "Random target position", True),
+    ], extra_lines=("Rendering caps training at ~60 steps/sec.",
+                    "Leave it off unless you want to watch."))
+    if options is None:
+        return  # Back to main menu
+    set_render_enabled(options["render"])
+    set_random_target(options["random_target"])
+
+    ## Name the run after how the target was placed, so the two kinds of run stay
+    ## distinguishable in models/ and in tensorboard.
+    target_mode = "random_target_training" if options["random_target"] else "static_target_training"
     current_time_str = str(int(time.time()))
-    models_dir = f"models/{current_time_str}/"
-    logdir = f"logs/{current_time_str}/"
+    models_dir = f"models/{current_time_str}_{target_mode}/"
+    logdir = f"logs/{current_time_str}_{target_mode}/"
     os.makedirs(models_dir, exist_ok=True)
     os.makedirs(logdir, exist_ok=True)
     
     env = LanderEnvironment()
     check_env(env, warn=True, skip_render_check=True)
-    env.render_mode = 'human'
+    env.render_mode = 'human' if options["render"] else None
 
     ## I got the congigs from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/ppo.yml
     ## Thanks to this blog for linking the configs: https://antoinebrl.github.io/blog/rl-mars-lander/#reward-shaping
@@ -55,7 +131,7 @@ def training_mode():
         print(f"Training iteration: {iters}")
         model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="PPO_Lander")
         model.save(f"{models_dir}/{iters}")
-        print(f"Model saved to {models_dir}/{TIMESTEPS*iters}")
+        print(f"Model saved to {models_dir}{iters}.zip after {TIMESTEPS*iters} timesteps")
 
         # Escape mechanism to return to menu
         for event in pygame.event.get():
@@ -98,8 +174,16 @@ def get_available_models():
                 if iterations:
                     max_iteration = max(iterations)
                     best_model_path = os.path.join(model_path, f"{max_iteration}.zip")
+                    ## Runs are named "<timestamp>_<random|static>_target_training".
+                    ## Older runs are a bare timestamp, so fall back to that.
+                    if "_random_target" in model_dir:
+                        label = f"{model_dir.split('_')[0]} random target"
+                    elif "_static_target" in model_dir:
+                        label = f"{model_dir.split('_')[0]} static target"
+                    else:
+                        label = model_dir
                     models.append({
-                        'name': f"Model {model_dir} (Iter {max_iteration})",
+                        'name': f"{label} (Iter {max_iteration})",
                         'path': best_model_path,
                         'timestamp': model_dir
                     })
@@ -194,7 +278,7 @@ def model_selection_screen():
         
         pygame.display.update()
 
-def run_test_episodes(model_path, num_episodes=10):
+def run_test_episodes(model_path, num_episodes=10, render=True):
     """Run test episodes and collect performance metrics."""
     print(f"Loading model from: {model_path}")
     
@@ -204,7 +288,7 @@ def run_test_episodes(model_path, num_episodes=10):
         
         # Create environment
         env = LanderEnvironment()
-        env.render_mode = 'human'
+        env.render_mode = 'human' if render else None
         
         # Statistics tracking
         episode_rewards = []
@@ -340,6 +424,8 @@ def test_mode():
     
     # Configuration screen
     num_episodes = 5  # Default
+    render = True  # Watching the agent play is the point of test mode
+    random_target = True
     while True:
         SCREEN.fill("black")
         
@@ -369,18 +455,28 @@ def test_mode():
                                 text_input="+", font=get_font(40), 
                                 base_color="White", hovering_color="Green")
         
+        # Option toggles
+        RENDER_BUTTON = Button(image=None, pos=(640, 385),
+                              text_input=f"Render episodes: {'ON' if render else 'OFF'}",
+                              font=get_font(32),
+                              base_color="Green" if render else "Red", hovering_color="White")
+        TARGET_BUTTON = Button(image=None, pos=(640, 435),
+                              text_input=f"Random target position: {'ON' if random_target else 'OFF'}",
+                              font=get_font(32),
+                              base_color="Green" if random_target else "Red", hovering_color="White")
+
         # Control buttons
-        START_BUTTON = Button(image=None, pos=(640, 400),
-                             text_input="START TEST", font=get_font(40), 
+        START_BUTTON = Button(image=None, pos=(640, 505),
+                             text_input="START TEST", font=get_font(40),
                              base_color="Green", hovering_color="White")
-        BACK_BUTTON = Button(image=None, pos=(640, 480),
-                            text_input="BACK", font=get_font(40), 
+        BACK_BUTTON = Button(image=None, pos=(640, 570),
+                            text_input="BACK", font=get_font(40),
                             base_color="White", hovering_color="Green")
-        
-        for button in [DECREASE_BUTTON, INCREASE_BUTTON, START_BUTTON, BACK_BUTTON]:
+
+        for button in [DECREASE_BUTTON, INCREASE_BUTTON, RENDER_BUTTON, TARGET_BUTTON, START_BUTTON, BACK_BUTTON]:
             button.changeColor(MOUSE_POS)
             button.update(SCREEN)
-        
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -390,9 +486,15 @@ def test_mode():
                     num_episodes = max(1, num_episodes - 1)
                 elif INCREASE_BUTTON.checkForInput(MOUSE_POS):
                     num_episodes = min(20, num_episodes + 1)
+                elif RENDER_BUTTON.checkForInput(MOUSE_POS):
+                    render = not render
+                elif TARGET_BUTTON.checkForInput(MOUSE_POS):
+                    random_target = not random_target
                 elif START_BUTTON.checkForInput(MOUSE_POS):
                     # Run the test
-                    results = run_test_episodes(selected_model['path'], num_episodes)
+                    set_render_enabled(render)
+                    set_random_target(random_target)
+                    results = run_test_episodes(selected_model['path'], num_episodes, render)
                     if results is not None:
                         display_results(results)
                     return  # Return to main menu after test

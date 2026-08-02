@@ -8,9 +8,27 @@ from typing import Optional, Tuple, Dict, Any
 from game_core.game_objects import GameObject, Button
 from game_core.game_render import SCREEN, GAME_BG, PLAYER_THRUSTING_IMAGE, EXPLOSION_IMAGE, clock, display_image, get_font
 
-## Set to True to watch training play out at 60 FPS instead of collecting
-## rollouts as fast as the machine allows. Manual and test modes always render.
-WATCH_TRAINING: bool = False
+## Rendering is off by default so rollouts are collected as fast as the machine
+## allows; the menu turns it on per run. This covers test runs too, since the RL
+## env always calls run_game_frame with mode "training". Manual mode always renders.
+RENDER_ENABLED: bool = False
+
+## Where the landing pad goes. Random by default; static pins it to one spot,
+## which is a much easier problem for the agent to learn.
+RANDOM_TARGET: bool = True
+STATIC_TARGET_X: int = 590
+
+def set_render_enabled(enabled: bool) -> None:
+    global RENDER_ENABLED
+    RENDER_ENABLED = enabled
+
+def set_random_target(random_target: bool) -> None:
+    global RANDOM_TARGET
+    RANDOM_TARGET = random_target
+
+def _target_x() -> int:
+    ## Read at call time so menu choices apply to the next reset.
+    return random.randint(20, 1200) if RANDOM_TARGET else STATIC_TARGET_X
 
 ## You can change this to whatever
 ## There are probably better ways to do this
@@ -87,8 +105,7 @@ def calculate_reward_and_done(gs):
 class GameState:
     def __init__(self):
         self.player = GameObject(random.randint(20, 1200), -30, 0, 1, "player")
-        self.target = GameObject(random.randint(20, 1200), 513, 0, 0, "target") ## This is the original line
-        # self.target = GameObject(590, 513, 0, 0, "target") ## Incase you want to always land in the same spot
+        self.target = GameObject(_target_x(), 513, 0, 0, "target")
 
         self.is_left_pressed: bool = False
         self.is_right_pressed: bool = False
@@ -106,8 +123,7 @@ class GameState:
         self.player.reset()
         self.target.reset()
         self.player.x = random.randint(200, 1200)
-        self.target.x = random.randint(20, 1200)
-        # self.target.x = 590  ## Incase you want to always land in the same spot
+        self.target.x = _target_x()
         self.player.rect.topleft = (int(self.player.x), int(self.player.y))
         self.target.rect.topleft = (int(self.target.x), int(self.target.y))
         self.is_left_pressed = False
@@ -227,9 +243,9 @@ def run_game_frame(
 
     ## Flipping the display and capping at 60 FPS are display concerns. Applying
     ## them to training pinned rollout collection to ~62 steps/sec, which is
-    ## about 4.5 hours for the 1M timesteps training_mode runs. Set
-    ## WATCH_TRAINING if you would rather watch than train quickly.
-    if mode != "training" or WATCH_TRAINING:
+    ## about 4.5 hours for the 1M timesteps training_mode runs. The menu sets
+    ## RENDER_ENABLED when you would rather watch than go fast.
+    if mode != "training" or RENDER_ENABLED:
         pygame.display.update()
         clock.tick(60)
 
