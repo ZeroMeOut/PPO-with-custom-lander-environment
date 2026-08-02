@@ -32,7 +32,7 @@ def _target_x() -> int:
 
 ## You can change this to whatever
 ## There are probably better ways to do this
-def calculate_reward_and_done(gs):
+def calculate_reward_and_done(gs, drawing: bool = True):
         # Distance based rewards
         current_x_distance: float = abs(gs.player.x - gs.target.x)
         current_y_distance: float = abs(gs.player.y - gs.target.y)
@@ -80,13 +80,15 @@ def calculate_reward_and_done(gs):
                 reward = 100
                 info["status"] = "landed_ok"
             else:
-                display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
+                if drawing:
+                    display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
                 done = True
                 reward = -100
                 info["status"] = "crashed"
 
         elif gs.player.y < -50:
-            display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
+            if drawing:
+                display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
             done = True
             reward = -100
             info["status"] = "flown_too_high"
@@ -134,25 +136,26 @@ class GameState:
         self.previous_hypotenuse = math.sqrt(self.previous_distance_x ** 2 + self.previous_distance_y ** 2)
         # self.final_reward = 2000.0
 
-game_state = GameState()
-
-def game_reset() -> None:
-    game_state.reset()
-
-def get_observation() -> ndarray:
-    """Build an observation from the current state without advancing the game."""
-    gs = game_state
-    return np.array([gs.player.x - gs.target.x, gs.player.y - gs.target.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
+    def get_observation(self) -> ndarray:
+        """Build an observation from the current state without advancing the game."""
+        return np.array([self.player.x - self.target.x, self.player.y - self.target.y,
+                         self.player.x_speed, self.player.y_speed, self.target.x, self.target.y])
 
 def run_game_frame(
-    mode: str, 
+    gs: GameState,
+    mode: str,
     action: Optional[int] = None
 ) -> Optional[Tuple[ndarray, float, bool, Dict[str, Any]]]:
-    gs = game_state
     player_x_acceleration: float = 0.0
     player_y_acceleration: float = 0.005
 
-    SCREEN.blit(GAME_BG, (0, 0))
+    ## Drawing is skipped entirely when nothing will be shown. It is not just
+    ## wasted work: with several envs in one process they all share SCREEN, so
+    ## they would be scribbling over each other's frames for no reason.
+    drawing: bool = mode != "training" or RENDER_ENABLED
+
+    if drawing:
+        SCREEN.blit(GAME_BG, (0, 0))
 
     if mode == "manual":
         LANDER_MOUSE_POS: Tuple[int, int] = pygame.mouse.get_pos()
@@ -232,23 +235,24 @@ def run_game_frame(
     gs.player.y_speed += player_y_acceleration
     gs.player.move()
     gs.player.rect.topleft = (int(gs.player.x), int(gs.player.y))
-    gs.target.display(SCREEN)
 
-    if (gs.is_up_pressed and mode == "manual") or (action == 2 and (mode == "training" or mode == "test")): 
-        SCREEN.blit(PLAYER_THRUSTING_IMAGE, (int(gs.player.x), int(gs.player.y)))
-    else:
-        gs.player.display(SCREEN)
-    
-    reward, done, info = calculate_reward_and_done(gs)
+    if drawing:
+        gs.target.display(SCREEN)
+        if (gs.is_up_pressed and mode == "manual") or (action == 2 and (mode == "training" or mode == "test")):
+            SCREEN.blit(PLAYER_THRUSTING_IMAGE, (int(gs.player.x), int(gs.player.y)))
+        else:
+            gs.player.display(SCREEN)
+
+    reward, done, info = calculate_reward_and_done(gs, drawing)
 
     ## Flipping the display and capping at 60 FPS are display concerns. Applying
     ## them to training pinned rollout collection to ~62 steps/sec, which is
     ## about 4.5 hours for the 1M timesteps training_mode runs. The menu sets
     ## RENDER_ENABLED when you would rather watch than go fast.
-    if mode != "training" or RENDER_ENABLED:
+    if drawing:
         pygame.display.update()
         clock.tick(60)
 
-    observation: ndarray = get_observation()
+    observation: ndarray = gs.get_observation()
     return observation, reward, done, info
 
