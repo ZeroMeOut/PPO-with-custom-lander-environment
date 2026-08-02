@@ -30,12 +30,13 @@ def calculate_reward_and_done(gs):
         #     distance_x: float = current_x_distance - gs.previous_distance_x
         #     reward += -gs.proportionality_factor_x * distance_x * 0.5
 
-        if current_hypotenuse <= gs.previous_hypotenuse:
-            distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
-            reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
-        else:
-            distance_hypotenuse: float = current_hypotenuse - gs.previous_hypotenuse
-            reward: float = -gs.proportionality_factor_hypotenuse * distance_hypotenuse * 0.5
+        ## Symmetric on purpose: rewarding approach more than it penalises retreat
+        ## lets the agent farm reward by oscillating (move away, move back, repeat)
+        ## and never landing. Weighting both directions equally makes the per-step
+        ## rewards telescope to k * (start_distance - end_distance), which is
+        ## path independent and so cannot be farmed.
+        distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
+        reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
 
         ## Acceration based rewards
         # current_acceleration_h: float = distance_hypotenuse/60/60

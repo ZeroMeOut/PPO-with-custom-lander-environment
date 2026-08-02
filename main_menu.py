@@ -223,7 +223,8 @@ def run_test_episodes(model_path, num_episodes=10):
                 # Get action from trained model
                 action, _ = model.predict(obs, deterministic=True)
                 ## print(type(action), action)  
-                obs, reward, done, truncated, info = env.step(int(action))
+                obs, reward, terminated, truncated, info = env.step(int(action))
+                done = terminated or truncated  # a timed-out episode is over too
                 episode_reward += reward
                 step_count += 1
                 

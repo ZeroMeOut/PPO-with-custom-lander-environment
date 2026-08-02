@@ -16,8 +16,14 @@ class LanderEnvironment(gym.Env):
     observation_space: spaces.Space
     _np_random: Optional[np.random.Generator]
 
-    def __init__(self) -> None:
+    def __init__(self, max_episode_steps: int = 1000) -> None:
         super(LanderEnvironment, self).__init__()
+        ## Nothing in the game ends an episode for an agent that just hovers, so
+        ## without a step budget an episode can run forever. Free fall reaches the
+        ## ground in ~300 steps; 1000 leaves room to manoeuvre.
+        self.max_episode_steps = max_episode_steps
+        self._elapsed_steps: int = 0
+
         ## Define action and observation space
         ## Action space: 0: left, 1: right, 2: up, 3: upleft, 4: upright, 5: do nothing
         self.action_space = spaces.Discrete(6)
@@ -44,9 +50,12 @@ class LanderEnvironment(gym.Env):
             truncated: bool = False
             info: Dict[str, Any] = {"message": "game_loop returned None, likely due to menu exit."}
         else:
-            observation, reward, terminated, info = result 
-            truncated = False
-        self.current_observation = observation 
+            observation, reward, terminated, info = result
+            self._elapsed_steps += 1
+            truncated = not terminated and self._elapsed_steps >= self.max_episode_steps
+            if truncated:
+                info["status"] = "timeout"
+        self.current_observation = observation
         return observation, reward, terminated, truncated, info
 
     def reset(
@@ -57,6 +66,7 @@ class LanderEnvironment(gym.Env):
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
         game_reset()
+        self._elapsed_steps = 0
         self.current_observation = None
         result: Optional[Tuple[np.ndarray, float, bool, Dict[str, Any]]] = run_game_frame("training", action=3) ## Dummy action
         if result is None:
