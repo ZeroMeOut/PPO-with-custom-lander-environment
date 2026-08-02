@@ -52,30 +52,33 @@ def calculate_reward_and_done(gs):
         gs.previous_hypotenuse = current_hypotenuse
         info: Dict[str, Any] = {}
 
+        ## Terminal states only flag the episode as over. Resetting here would
+        ## overwrite the state before run_game_frame builds the observation, so
+        ## the caller was handed the next episode's spawn point as the terminal
+        ## observation. Respawning belongs to reset().
         if gs.player.y > 513:
             if gs.player.collided_with(gs.target):
-                game_reset()
                 done = True
                 reward = 100
                 info["status"] = "landed_ok"
             else:
-                display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
-                game_reset()
+                display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
                 done = True
-                reward = -100 
+                reward = -100
                 info["status"] = "crashed"
 
         elif gs.player.y < -50:
-            display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
-            game_reset()
+            display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
             done = True
-            reward = -100 
+            reward = -100
             info["status"] = "flown_too_high"
 
-        if gs.player.x < 0 or gs.player.x > 1280:
-            game_reset()
-            done = True 
-            reward = -100 
+        ## elif, not if: now that this reads the real position rather than a
+        ## post-reset one, a frame that reaches the ground must keep its
+        ## outcome instead of being relabelled out of bounds.
+        elif gs.player.x < 0 or gs.player.x > 1280:
+            done = True
+            reward = -100
             info["status"] = "out_of_horizontal_bounds"
 
         return reward, done, info
@@ -119,6 +122,11 @@ game_state = GameState()
 
 def game_reset() -> None:
     game_state.reset()
+
+def get_observation() -> ndarray:
+    """Build an observation from the current state without advancing the game."""
+    gs = game_state
+    return np.array([gs.player.x - gs.target.x, gs.player.y - gs.target.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
 
 def run_game_frame(
     mode: str, 
@@ -225,6 +233,6 @@ def run_game_frame(
         pygame.display.update()
         clock.tick(60)
 
-    observation: ndarray = np.array([gs.player.x - gs.target.x, gs.player.y - gs.target.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
+    observation: ndarray = get_observation()
     return observation, reward, done, info
 

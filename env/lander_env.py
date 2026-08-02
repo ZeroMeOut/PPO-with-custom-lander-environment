@@ -4,7 +4,7 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 from typing import Any, Dict, List, Tuple, Union, Optional
 
-from game_core.game_logic import run_game_frame, game_reset
+from game_core.game_logic import run_game_frame, game_reset, get_observation
 from game_core.game_render import  quit_pygame
 
 
@@ -67,14 +67,12 @@ class LanderEnvironment(gym.Env):
         super().reset(seed=seed)
         game_reset()
         self._elapsed_steps = 0
-        self.current_observation = None
-        result: Optional[Tuple[np.ndarray, float, bool, Dict[str, Any]]] = run_game_frame("training", action=3) ## Dummy action
-        if result is None:
-            observation: np.ndarray = np.zeros(6, dtype=np.float64)
-            info: Dict[str, Any] = {"message": "game_loop returned None, likely due to menu exit."}
-        else:
-            observation, _, _, info = result
-        return observation, info # Gym 0.26+ reset returns (observation, info)
+        ## Read the freshly reset state directly. Stepping a frame here with a
+        ## hardcoded action meant every episode opened with a thrust the agent
+        ## never chose, so this never returned the actual initial state.
+        observation: np.ndarray = get_observation()
+        self.current_observation = observation
+        return observation, {} # Gym 0.26+ reset returns (observation, info)
 
     def render(self) -> Optional[Union[np.ndarray, bool]]:
         if self.render_mode == 'human':
