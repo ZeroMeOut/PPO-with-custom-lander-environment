@@ -5,7 +5,6 @@ from gymnasium.utils import seeding
 from typing import Any, Dict, List, Tuple, Union, Optional
 
 from game_core.game_logic import run_game_frame, game_reset, get_observation
-from game_core.game_render import  quit_pygame
 
 
 ## From https://stable-baselines3.readthedocs.io/en/master/guide/custom_env.html
@@ -82,4 +81,9 @@ class LanderEnvironment(gym.Env):
             return self.current_observation
         
     def close(self) -> None:
-        quit_pygame()
+        ## Deliberately does nothing. The pygame display is created at import
+        ## time in game_render and shared with the menu, so it is not this env's
+        ## to tear down: quitting pygame here invalidated SCREEN, and the
+        ## sys.exit() inside quit_pygame killed the process outright, which is
+        ## why the ESC and QUIT handlers in training_mode never reached the menu.
+        pass
