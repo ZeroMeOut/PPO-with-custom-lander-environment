@@ -4,8 +4,7 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 from typing import Any, Dict, List, Tuple, Union, Optional
 
-from game_core.game_logic import run_game_frame, game_reset
-from game_core.game_render import  quit_pygame
+from game_core.game_logic import run_game_frame, game_reset, get_observation
 
 
 ## From https://stable-baselines3.readthedocs.io/en/master/guide/custom_env.html
@@ -16,8 +15,14 @@ class LanderEnvironment(gym.Env):
     observation_space: spaces.Space
     _np_random: Optional[np.random.Generator]
 
-    def __init__(self) -> None:
+    def __init__(self, max_episode_steps: int = 1000) -> None:
         super(LanderEnvironment, self).__init__()
+        ## Nothing in the game ends an episode for an agent that just hovers, so
+        ## without a step budget an episode can run forever. Free fall reaches the
+        ## ground in ~300 steps; 1000 leaves room to manoeuvre.
+        self.max_episode_steps = max_episode_steps
+        self._elapsed_steps: int = 0
+
         ## Define action and observation space
         ## Action space: 0: left, 1: right, 2: up, 3: upleft, 4: upright, 5: do nothing
         self.action_space = spaces.Discrete(6)
@@ -44,9 +49,12 @@ class LanderEnvironment(gym.Env):
             truncated: bool = False
             info: Dict[str, Any] = {"message": "game_loop returned None, likely due to menu exit."}
         else:
-            observation, reward, terminated, info = result 
-            truncated = False
-        self.current_observation = observation 
+            observation, reward, terminated, info = result
+            self._elapsed_steps += 1
+            truncated = not terminated and self._elapsed_steps >= self.max_episode_steps
+            if truncated:
+                info["status"] = "timeout"
+        self.current_observation = observation
         return observation, reward, terminated, truncated, info
 
     def reset(
@@ -57,14 +65,13 @@ class LanderEnvironment(gym.Env):
     ) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
         game_reset()
-        self.current_observation = None
-        result: Optional[Tuple[np.ndarray, float, bool, Dict[str, Any]]] = run_game_frame("training", action=3) ## Dummy action
-        if result is None:
-            observation: np.ndarray = np.zeros(6, dtype=np.float64)
-            info: Dict[str, Any] = {"message": "game_loop returned None, likely due to menu exit."}
-        else:
-            observation, _, _, info = result
-        return observation, info # Gym 0.26+ reset returns (observation, info)
+        self._elapsed_steps = 0
+        ## Read the freshly reset state directly. Stepping a frame here with a
+        ## hardcoded action meant every episode opened with a thrust the agent
+        ## never chose, so this never returned the actual initial state.
+        observation: np.ndarray = get_observation()
+        self.current_observation = observation
+        return observation, {} # Gym 0.26+ reset returns (observation, info)
 
     def render(self) -> Optional[Union[np.ndarray, bool]]:
         if self.render_mode == 'human':
@@ -74,4 +81,9 @@ class LanderEnvironment(gym.Env):
             return self.current_observation
         
     def close(self) -> None:
-        quit_pygame()
+        ## Deliberately does nothing. The pygame display is created at import
+        ## time in game_render and shared with the menu, so it is not this env's
+        ## to tear down: quitting pygame here invalidated SCREEN, and the
+        ## sys.exit() inside quit_pygame killed the process outright, which is
+        ## why the ESC and QUIT handlers in training_mode never reached the menu.
+        pass

@@ -8,6 +8,10 @@ from typing import Optional, Tuple, Dict, Any
 from game_core.game_objects import GameObject, Button
 from game_core.game_render import SCREEN, GAME_BG, PLAYER_THRUSTING_IMAGE, EXPLOSION_IMAGE, clock, display_image, get_font
 
+## Set to True to watch training play out at 60 FPS instead of collecting
+## rollouts as fast as the machine allows. Manual and test modes always render.
+WATCH_TRAINING: bool = False
+
 ## You can change this to whatever
 ## There are probably better ways to do this
 def calculate_reward_and_done(gs):
@@ -30,12 +34,13 @@ def calculate_reward_and_done(gs):
         #     distance_x: float = current_x_distance - gs.previous_distance_x
         #     reward += -gs.proportionality_factor_x * distance_x * 0.5
 
-        if current_hypotenuse <= gs.previous_hypotenuse:
-            distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
-            reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
-        else:
-            distance_hypotenuse: float = current_hypotenuse - gs.previous_hypotenuse
-            reward: float = -gs.proportionality_factor_hypotenuse * distance_hypotenuse * 0.5
+        ## Symmetric on purpose: rewarding approach more than it penalises retreat
+        ## lets the agent farm reward by oscillating (move away, move back, repeat)
+        ## and never landing. Weighting both directions equally makes the per-step
+        ## rewards telescope to k * (start_distance - end_distance), which is
+        ## path independent and so cannot be farmed.
+        distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
+        reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
 
         ## Acceration based rewards
         # current_acceleration_h: float = distance_hypotenuse/60/60
@@ -47,30 +52,33 @@ def calculate_reward_and_done(gs):
         gs.previous_hypotenuse = current_hypotenuse
         info: Dict[str, Any] = {}
 
+        ## Terminal states only flag the episode as over. Resetting here would
+        ## overwrite the state before run_game_frame builds the observation, so
+        ## the caller was handed the next episode's spawn point as the terminal
+        ## observation. Respawning belongs to reset().
         if gs.player.y > 513:
             if gs.player.collided_with(gs.target):
-                game_reset()
                 done = True
                 reward = 100
                 info["status"] = "landed_ok"
             else:
-                display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
-                game_reset()
+                display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
                 done = True
-                reward = -100 
+                reward = -100
                 info["status"] = "crashed"
 
         elif gs.player.y < -50:
-            display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18) 
-            game_reset()
+            display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
             done = True
-            reward = -100 
+            reward = -100
             info["status"] = "flown_too_high"
 
-        if gs.player.x < 0 or gs.player.x > 1280:
-            game_reset()
-            done = True 
-            reward = -100 
+        ## elif, not if: now that this reads the real position rather than a
+        ## post-reset one, a frame that reaches the ground must keep its
+        ## outcome instead of being relabelled out of bounds.
+        elif gs.player.x < 0 or gs.player.x > 1280:
+            done = True
+            reward = -100
             info["status"] = "out_of_horizontal_bounds"
 
         return reward, done, info
@@ -114,6 +122,11 @@ game_state = GameState()
 
 def game_reset() -> None:
     game_state.reset()
+
+def get_observation() -> ndarray:
+    """Build an observation from the current state without advancing the game."""
+    gs = game_state
+    return np.array([gs.player.x - gs.target.x, gs.player.y - gs.target.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
 
 def run_game_frame(
     mode: str, 
@@ -212,9 +225,14 @@ def run_game_frame(
     
     reward, done, info = calculate_reward_and_done(gs)
 
-    pygame.display.update() 
+    ## Flipping the display and capping at 60 FPS are display concerns. Applying
+    ## them to training pinned rollout collection to ~62 steps/sec, which is
+    ## about 4.5 hours for the 1M timesteps training_mode runs. Set
+    ## WATCH_TRAINING if you would rather watch than train quickly.
+    if mode != "training" or WATCH_TRAINING:
+        pygame.display.update()
+        clock.tick(60)
 
-    observation: ndarray = np.array([gs.player.x - gs.target.x, gs.player.y - gs.target.y, gs.player.x_speed, gs.player.y_speed, gs.target.x, gs.target.y])
-    clock.tick(60)
+    observation: ndarray = get_observation()
     return observation, reward, done, info
 

@@ -22,11 +22,11 @@ def manual_mode():
     game_reset()  # Reset the game state before entering manual mode
     while True:
         result = run_game_frame("manual")
-        if result is not None:
-            continue
-            # print(f"Manual mode result: {result[1]}") ## Degugging reward value
         if result is None: # game_loop returns None if BACK is pressed
             break # Exit manual mode loop
+        _, _, done, _ = result
+        if done: # crashing and landing no longer respawn from inside the reward function
+            game_reset()
 
 ## You can watch sentdex's video on this, pretty cool
 ## https://www.youtube.com/watch?v=uKnjGn8fF70&t=540s
@@ -223,7 +223,8 @@ def run_test_episodes(model_path, num_episodes=10):
                 # Get action from trained model
                 action, _ = model.predict(obs, deterministic=True)
                 ## print(type(action), action)  
-                obs, reward, done, truncated, info = env.step(int(action))
+                obs, reward, terminated, truncated, info = env.step(int(action))
+                done = terminated or truncated  # a timed-out episode is over too
                 episode_reward += reward
                 step_count += 1
                 
