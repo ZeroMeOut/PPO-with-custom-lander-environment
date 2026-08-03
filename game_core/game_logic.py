@@ -114,7 +114,7 @@ class GameState:
         self.previous_distance_x: float = abs(self.player.x - self.target.x)
         self.previous_distance_y: float = abs(self.player.y - self.target.y)
         self.previous_speed: float = math.hypot(self.player.x_speed, self.player.y_speed)
-        self.proportionality_factor_speed: float = 20
+        self.proportionality_factor_speed: float = 40
         self.previous_hypotenuse: float = math.hypot(self.previous_distance_x, self.previous_distance_y)
         self.proportionality_factor_hypotenuse: float = 20
 
