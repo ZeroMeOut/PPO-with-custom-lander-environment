@@ -131,7 +131,11 @@ class GameState:
         self.is_up_pressed = False
         self.previous_distance_x = abs(self.player.x - self.target.x)
         self.previous_distance_y = abs(self.player.y - self.target.y)
-        self.previous_hypotenuse = math.sqrt(self.previous_distance_x ** 2 + self.previous_distance_y ** 2)
+        self.previous_hypotenuse = math.hypot(self.previous_distance_x, self.previous_distance_y)
+        ## Must be restored like the distances above. Left stale, the first step
+        ## of an episode was paid k_speed * (last episode's final speed - 1.0),
+        ## which after a fast crash is about +30 of reward from nowhere.
+        self.previous_speed = math.hypot(self.player.x_speed, self.player.y_speed)
 
     def get_observation(self) -> ndarray:
         """Build an observation from the current state without advancing the game."""
