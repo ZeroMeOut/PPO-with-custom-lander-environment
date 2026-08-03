@@ -16,6 +16,18 @@ ACTION_NAMES = ["left", "right", "up", "up_left", "up_right", "nothing"]
 ## see at a glance whether the policy is braking at all.
 THRUST_ACTIONS = (2, 3, 4)
 
+## Every info["status"] calculate_reward_and_done and the env can produce.
+## Listed explicitly so the tensorboard tags exist from the first rollout
+## rather than appearing only once an outcome first happens.
+STATUS_NAMES = [
+    "landed_ok",
+    "too_fast",
+    "crashed",
+    "flown_too_high",
+    "out_of_horizontal_bounds",
+    "timeout",
+]
+
 
 class ActionFrequencyCallback(BaseCallback):
     """Log how often the policy picks each action, as a fraction per rollout.
@@ -82,3 +94,43 @@ class ActionFrequencyCallback(BaseCallback):
         self._rollouts += 1
         ## Each point describes one rollout rather than all of training so far.
         self.counts[:] = 0
+
+
+class EpisodeOutcomeCallback(BaseCallback):
+    """Log how episodes ended, as fractions per rollout.
+
+    Written to tensorboard under outcomes/<status>, plus outcomes/episodes for
+    the number of episodes the fractions are over. ep_rew_mean is dominated by
+    distance shaping, so it tracks "got close" rather than "landed"; this is the
+    series that answers whether the agent is actually succeeding.
+    """
+
+    def __init__(self, verbose: int = 0):
+        super().__init__(verbose)
+        self.counts: dict[str, int] = {}
+
+    def _on_step(self) -> bool:
+        dones = self.locals.get("dones")
+        infos = self.locals.get("infos")
+        if dones is None or infos is None:
+            return True
+        for done, info in zip(dones, infos):
+            ## VecEnv auto-resets on done but keeps the env's own info dict, so
+            ## the status set by calculate_reward_and_done survives to here.
+            if done:
+                status = info.get("status", "unknown")
+                self.counts[status] = self.counts.get(status, 0) + 1
+        return True
+
+    def _on_rollout_end(self) -> None:
+        total = sum(self.counts.values())
+        ## Skip rather than log zeros when no episode finished this rollout,
+        ## so a gap in the series is not mistaken for a 0% success rate.
+        if total:
+            for name in STATUS_NAMES:
+                self.logger.record(f"outcomes/{name}", self.counts.get(name, 0) / total)
+            unexpected = sum(v for k, v in self.counts.items() if k not in STATUS_NAMES)
+            if unexpected:
+                self.logger.record("outcomes/other", unexpected / total)
+            self.logger.record("outcomes/episodes", total)
+        self.counts.clear()
