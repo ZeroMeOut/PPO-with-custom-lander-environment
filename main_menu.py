@@ -10,7 +10,8 @@ from game_core.game_render import SCREEN, get_font, BG, quit_pygame
 
 from stable_baselines3 import PPO
 from env.lander_env import LanderEnvironment
-from env.callbacks import ActionFrequencyCallback
+from env.callbacks import ActionFrequencyCallback, EpisodeOutcomeCallback
+from stable_baselines3.common.callbacks import CallbackList
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.env_util import make_vec_env
 
@@ -133,9 +134,9 @@ def training_mode():
     model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=logdir, device='cpu',
                 n_steps=2048 // n_envs,
                 gae_lambda=0.98, gamma=0.999, n_epochs=4, ent_coef=0.01, vf_coef=0.5)
-    ## Logs how often each action is chosen, so tensorboard shows whether the
-    ## policy is actually using the boosters rather than just falling.
-    action_logger = ActionFrequencyCallback()
+    ## Two things ep_rew_mean cannot tell you: which actions the policy favours,
+    ## and how often it actually lands rather than merely getting close.
+    training_callbacks = CallbackList([ActionFrequencyCallback(), EpisodeOutcomeCallback()])
 
     TIMESTEPS = 100000
     iters = 0
@@ -143,7 +144,7 @@ def training_mode():
         iters += 1
         print(f"Training iteration: {iters}")
         model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="PPO_Lander",
-                    callback=action_logger)
+                    callback=training_callbacks)
         model.save(f"{models_dir}/{iters}")
         print(f"Model saved to {models_dir}{iters}.zip after {TIMESTEPS*iters} timesteps")
 
