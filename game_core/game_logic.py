@@ -69,7 +69,8 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         LANDING_SPEED_LIMIT: float = 1.0 
         if gs.player.y > 513:
             impact = math.hypot(gs.player.x_speed, gs.player.y_speed)
-            if gs.player.collided_with(gs.target) and impact <= LANDING_SPEED_LIMIT:
+            ## if gs.player.collided_with(gs.target) and impact <= LANDING_SPEED_LIMIT:
+            if gs.player.collided_with(gs.target):
                 done = True
                 reward = 100
                 info["status"] = "landed_ok"
@@ -78,7 +79,8 @@ def calculate_reward_and_done(gs, drawing: bool = True):
                     display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
                 done = True
                 reward = -100
-                info["status"] = "too_fast" if gs.player.collided_with(gs.target) else "crashed"
+                ## info["status"] = "too_fast" if gs.player.collided_with(gs.target) else "crashed"
+                info["status"] = "crashed"
 
         elif gs.player.y < -50:
             if drawing:
@@ -114,7 +116,7 @@ class GameState:
         self.previous_distance_x: float = abs(self.player.x - self.target.x)
         self.previous_distance_y: float = abs(self.player.y - self.target.y)
         self.previous_speed: float = math.hypot(self.player.x_speed, self.player.y_speed)
-        self.proportionality_factor_speed: float = 40
+        self.proportionality_factor_speed: float = 30
         self.previous_hypotenuse: float = math.hypot(self.previous_distance_x, self.previous_distance_y)
         self.proportionality_factor_hypotenuse: float = 20
 
