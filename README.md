@@ -47,3 +47,6 @@ First off, I was initially trying to use CNN to train this. But it's so damn str
 Secondly, it is annoyingly long to fine-tune and train. I took like 20-25 tries to get a decently looking ep_rew_mean graph, and even then I kept running into [value loss explosion](https://medium.com/@kaige.yang0110/in-training-ppo-how-to-balance-value-loss-and-policy-loss-cbf10d9d6b86) because of the hyperparameters or rewards I was using (thank you Antoinebrl, you saved my time a lot). And lord, the bugs, I don't even want to start with that.
 
 Overall, this is still a learning process for me, and even with all the rambling I am doing rn I still find building this fun.
+
+# Some updates
+I am trying to make the code and agent better now that I got a Claude code subscription. The training is way faster now, and the value loss explosion was caused by a bug in my reward function that I didn't figure out at the time. The Lander still sucks tho, it doesn't reallly try to use it's boosters to slow down then navigate towards the target. I believe again it's a reward function problem that I will eventually figure out.
