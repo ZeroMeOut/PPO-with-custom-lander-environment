@@ -21,11 +21,9 @@ THRUST_ACTIONS = (2, 3, 4)
 ## rather than appearing only once an outcome first happens.
 STATUS_NAMES = [
     "landed_ok",
-    "too_fast",
     "crashed",
     "flown_too_high",
     "out_of_horizontal_bounds",
-    "timeout",
 ]
 
 
@@ -82,9 +80,9 @@ class ActionFrequencyCallback(BaseCallback):
         total = int(self.counts.sum())
         if total:
             freqs = self.counts / total
-            for name, freq in zip(ACTION_NAMES, freqs):
-                self.logger.record(f"actions/{name}", float(freq))
-            self.logger.record("actions/thrust_any", float(freqs[list(THRUST_ACTIONS)].sum()))
+            # for name, freq in zip(ACTION_NAMES, freqs):
+            #     self.logger.record(f"actions/{name}", float(freq))
+            # self.logger.record("actions/thrust_any", float(freqs[list(THRUST_ACTIONS)].sum()))
 
             if self.bar_chart and self._rollouts % self.figure_freq == 0:
                 ## A Figure cannot be written to stdout/csv/json, only tensorboard.
@@ -132,5 +130,5 @@ class EpisodeOutcomeCallback(BaseCallback):
             unexpected = sum(v for k, v in self.counts.items() if k not in STATUS_NAMES)
             if unexpected:
                 self.logger.record("outcomes/other", unexpected / total)
-            self.logger.record("outcomes/episodes", total)
+            # self.logger.record("outcomes/episodes", total)
         self.counts.clear()
