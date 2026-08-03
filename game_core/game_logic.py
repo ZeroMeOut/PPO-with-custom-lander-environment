@@ -32,21 +32,7 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         # Distance based rewards
         current_x_distance: float = abs(gs.player.x - gs.target.x)
         current_y_distance: float = abs(gs.player.y - gs.target.y)
-        current_hypotenuse: float = math.sqrt(current_x_distance ** 2 + current_y_distance ** 2)
-
-        # if current_y_distance <= gs.previous_distance_y:
-        #     distance_y: float = gs.previous_distance_y - current_y_distance
-        #     reward: float = gs.proportionality_factor_y * distance_y
-        # else:
-        #     distance_y: float = current_y_distance - gs.previous_distance_y
-        #     reward: float = - gs.proportionality_factor_y * distance_y * 0.5
-
-        # if current_x_distance <= gs.previous_distance_x:
-        #     distance_x: float = gs.previous_distance_x - current_x_distance
-        #     reward += gs.proportionality_factor_x * distance_x
-        # else:
-        #     distance_x: float = current_x_distance - gs.previous_distance_x
-        #     reward += -gs.proportionality_factor_x * distance_x * 0.5
+        current_hypotenuse: float = math.hypot(current_x_distance, current_y_distance)
 
         ## Symmetric on purpose: rewarding approach more than it penalises retreat
         ## lets the agent farm reward by oscillating (move away, move back, repeat)
@@ -54,7 +40,9 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         ## rewards telescope to k * (start_distance - end_distance), which is
         ## path independent and so cannot be farmed.
         distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
+        current_speed = math.hypot(gs.player.x_speed, gs.player.y_speed)
         reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
+        reward += gs.proportionality_factor_speed * (gs.previous_speed - current_speed)
 
         ## Acceration based rewards
         # current_acceleration_h: float = distance_hypotenuse/60/60
@@ -64,14 +52,17 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         gs.previous_distance_x = current_x_distance
         gs.previous_distance_y = current_y_distance
         gs.previous_hypotenuse = current_hypotenuse
+        gs.previous_speed = current_speed
         info: Dict[str, Any] = {}
 
         ## Terminal states only flag the episode as over. Resetting here would
         ## overwrite the state before run_game_frame builds the observation, so
         ## the caller was handed the next episode's spawn point as the terminal
         ## observation. Respawning belongs to reset().
+        LANDING_SPEED_LIMIT: float = 1.0 
         if gs.player.y > 513:
-            if gs.player.collided_with(gs.target):
+            impact = math.hypot(gs.player.x_speed, gs.player.y_speed)
+            if gs.player.collided_with(gs.target) and impact <= LANDING_SPEED_LIMIT:
                 done = True
                 reward = 100
                 info["status"] = "landed_ok"
@@ -80,7 +71,7 @@ def calculate_reward_and_done(gs, drawing: bool = True):
                     display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
                 done = True
                 reward = -100
-                info["status"] = "crashed"
+                info["status"] = "too_fast" if gs.player.collided_with(gs.target) else "crashed"
 
         elif gs.player.y < -50:
             if drawing:
@@ -115,12 +106,10 @@ class GameState:
         self.is_up_pressed: bool = False
         self.previous_distance_x: float = abs(self.player.x - self.target.x)
         self.previous_distance_y: float = abs(self.player.y - self.target.y)
-        self.previous_hypotenuse: float = math.sqrt(self.previous_distance_x ** 2 + self.previous_distance_y ** 2)
-        # self.final_reward = 3000.0
-        self.proportionality_factor_x: float = 20
-        self.proportionality_factor_y: float = 10
+        self.previous_speed: float = math.hypot(self.player.x_speed, self.player.y_speed)
+        self.proportionality_factor_speed: float = 20
+        self.previous_hypotenuse: float = math.hypot(self.previous_distance_x, self.previous_distance_y)
         self.proportionality_factor_hypotenuse: float = 20
-        self.time_penalty: float = -0.001
 
     def seed(self, seed: int) -> None:
         """Reseed the game RNG so the next reset is reproducible."""
@@ -143,7 +132,6 @@ class GameState:
         self.previous_distance_x = abs(self.player.x - self.target.x)
         self.previous_distance_y = abs(self.player.y - self.target.y)
         self.previous_hypotenuse = math.sqrt(self.previous_distance_x ** 2 + self.previous_distance_y ** 2)
-        # self.final_reward = 2000.0
 
     def get_observation(self) -> ndarray:
         """Build an observation from the current state without advancing the game."""
