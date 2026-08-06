@@ -5,7 +5,7 @@ import pygame
 import numpy as np
 from numpy import ndarray
 from typing import Optional, Tuple, Dict, Any
-from game_core.game_objects import GameObject, Button
+from game_core.game_objects import GameObject, Button, TextObject
 from game_core.game_render import SCREEN, GAME_BG, PLAYER_THRUSTING_IMAGE, EXPLOSION_IMAGE, clock, display_image, get_font
 
 ## Rendering is off by default so rollouts are collected as fast as the machine
@@ -47,9 +47,9 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         ## rewards telescope to k * (start_distance - end_distance), which is
         ## path independent and so cannot be farmed.
         distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
-        current_speed = math.hypot(gs.player.x_speed, gs.player.y_speed)
+        current_acceleration = math.hypot(gs.player.x_acceleration, gs.player.y_acceleration)
         reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
-        reward += gs.proportionality_factor_speed * (gs.previous_speed - current_speed)
+        reward += gs.proportionality_factor_acceleration * (gs.previous_acceleration - current_acceleration)
 
         ## Acceration based rewards
         # current_acceleration_h: float = distance_hypotenuse/60/60
@@ -59,17 +59,17 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         gs.previous_distance_x = current_x_distance
         gs.previous_distance_y = current_y_distance
         gs.previous_hypotenuse = current_hypotenuse
-        gs.previous_speed = current_speed
+        gs.previous_acceleration = current_acceleration
         info: Dict[str, Any] = {}
 
         ## Terminal states only flag the episode as over. Resetting here would
         ## overwrite the state before run_game_frame builds the observation, so
         ## the caller was handed the next episode's spawn point as the terminal
         ## observation. Respawning belongs to reset().
-        LANDING_SPEED_LIMIT: float = 1.0 
+        LANDING_acceleration_LIMIT: float = 1.0 
         if gs.player.y > 513:
-            impact = math.hypot(gs.player.x_speed, gs.player.y_speed)
-            ## if gs.player.collided_with(gs.target) and impact <= LANDING_SPEED_LIMIT:
+            impact = math.hypot(gs.player.x_acceleration, gs.player.y_acceleration)
+            ## if gs.player.collided_with(gs.target) and impact <= LANDING_acceleration_LIMIT:
             if gs.player.collided_with(gs.target):
                 done = True
                 reward = 100
@@ -115,8 +115,8 @@ class GameState:
         self.is_up_pressed: bool = False
         self.previous_distance_x: float = abs(self.player.x - self.target.x)
         self.previous_distance_y: float = abs(self.player.y - self.target.y)
-        self.previous_speed: float = math.hypot(self.player.x_speed, self.player.y_speed)
-        self.proportionality_factor_speed: float = 30
+        self.previous_acceleration: float = math.hypot(self.player.x_acceleration, self.player.y_acceleration)
+        self.proportionality_factor_acceleration: float = 30
         self.previous_hypotenuse: float = math.hypot(self.previous_distance_x, self.previous_distance_y)
         self.proportionality_factor_hypotenuse: float = 20
 
@@ -142,14 +142,14 @@ class GameState:
         self.previous_distance_y = abs(self.player.y - self.target.y)
         self.previous_hypotenuse = math.hypot(self.previous_distance_x, self.previous_distance_y)
         ## Must be restored like the distances above. Left stale, the first step
-        ## of an episode was paid k_speed * (last episode's final speed - 1.0),
+        ## of an episode was paid k_acceleration * (last episode's final acceleration - 1.0),
         ## which after a fast crash is about +30 of reward from nowhere.
-        self.previous_speed = math.hypot(self.player.x_speed, self.player.y_speed)
+        self.previous_acceleration = math.hypot(self.player.x_acceleration, self.player.y_acceleration)
 
     def get_observation(self) -> ndarray:
         """Build an observation from the current state without advancing the game."""
         return np.array([self.player.x - self.target.x, self.player.y - self.target.y,
-                         self.player.x_speed, self.player.y_speed, self.target.x, self.target.y])
+                         self.player.x_acceleration, self.player.y_acceleration, self.target.x, self.target.y])
 
 def run_game_frame(
     gs: GameState,
@@ -179,6 +179,14 @@ def run_game_frame(
         )
         LANDER_BACK.changeColor(LANDER_MOUSE_POS)
         LANDER_BACK.update(SCREEN)
+
+        # LANDER_ACCELERATION: TextObject = TextObject(
+        #     text_input=f"Acceleration: {current_player_x_acceleration:.3f}, {current_player_y_acceleration:.3f}",
+        #     font=get_font(10),
+        #     color="White",
+        #     pos=(SCREEN.get_width() - 200, 50)
+        # )
+        # LANDER_ACCELERATION.update(SCREEN)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -241,8 +249,8 @@ def run_game_frame(
             player_x_acceleration = 0.0
             player_y_acceleration = 0.005
 
-    gs.player.x_speed += player_x_acceleration
-    gs.player.y_speed += player_y_acceleration
+    gs.player.x_acceleration += player_x_acceleration
+    gs.player.y_acceleration += player_y_acceleration
     gs.player.move()
     gs.player.rect.topleft = (int(gs.player.x), int(gs.player.y))
 
