@@ -140,7 +140,7 @@ def training_mode():
 
     TIMESTEPS = 100000
     iters = 0
-    while iters < 50:  # Run for 50 iterations
+    while iters < 10:  # Run for 10 iterations
         iters += 1
         print(f"Training iteration: {iters}")
         model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name="PPO_Lander",
