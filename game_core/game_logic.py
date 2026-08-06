@@ -48,8 +48,12 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         ## path independent and so cannot be farmed.
         distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
         current_acceleration = math.hypot(gs.player.x_acceleration, gs.player.y_acceleration)
-        reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
-        reward += gs.proportionality_factor_acceleration * (gs.previous_acceleration - current_acceleration)
+
+        if gs.player.y_acceleration > 1:
+            reward: float = -20
+        else:
+            reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
+            reward += gs.proportionality_factor_acceleration * (gs.previous_acceleration - current_acceleration)
 
         ## Acceration based rewards
         # current_acceleration_h: float = distance_hypotenuse/60/60
@@ -116,7 +120,7 @@ class GameState:
         self.previous_distance_x: float = abs(self.player.x - self.target.x)
         self.previous_distance_y: float = abs(self.player.y - self.target.y)
         self.previous_acceleration: float = math.hypot(self.player.x_acceleration, self.player.y_acceleration)
-        self.proportionality_factor_acceleration: float = 30
+        self.proportionality_factor_acceleration: float = 10
         self.previous_hypotenuse: float = math.hypot(self.previous_distance_x, self.previous_distance_y)
         self.proportionality_factor_hypotenuse: float = 20
 
@@ -180,13 +184,13 @@ def run_game_frame(
         LANDER_BACK.changeColor(LANDER_MOUSE_POS)
         LANDER_BACK.update(SCREEN)
 
-        # LANDER_ACCELERATION: TextObject = TextObject(
-        #     text_input=f"Acceleration: {current_player_x_acceleration:.3f}, {current_player_y_acceleration:.3f}",
-        #     font=get_font(10),
-        #     color="White",
-        #     pos=(SCREEN.get_width() - 200, 50)
-        # )
-        # LANDER_ACCELERATION.update(SCREEN)
+        LANDER_ACCELERATION: TextObject = TextObject(
+            text_input=f"Acceleration: {gs.player.x_acceleration:.3f}, {gs.player.y_acceleration:.3f}",
+            font=get_font(15),
+            color="White",
+            pos=(SCREEN.get_width() - 200, 50)
+        )
+        LANDER_ACCELERATION.update(SCREEN)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
