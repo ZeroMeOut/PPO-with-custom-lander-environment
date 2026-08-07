@@ -123,17 +123,17 @@ def training_mode():
 
     ## Running several envs in one process is only safe now that each owns its
     ## game state. It is ~2.9x faster end to end, because the policy sees one
-    ## batch of 8 observations instead of 8 separate forward passes. Rendering
+    ## batch of 16 observations instead of 8 separate forward passes. Rendering
     ## forces a single env, since they would all draw over the same screen.
-    n_envs = 1 if options["render"] else 8
+    n_envs = 1 if options["render"] else 16
     env = make_vec_env(LanderEnvironment, n_envs=n_envs)
 
     ## I got the congigs from https://github.com/DLR-RM/rl-baselines3-zoo/blob/master/hyperparams/ppo.yml
     ## Thanks to this blog for linking the configs: https://antoinebrl.github.io/blog/rl-mars-lander/#reward-shaping
     ## n_steps is per env, so divide it to keep the rollout buffer at 2048 transitions.
     model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=logdir, device='cpu',
-                n_steps=2048 // n_envs,
-                gae_lambda=0.98, gamma=0.999, n_epochs=4, ent_coef=0.01, vf_coef=0.5)
+                n_steps=20480 // n_envs,
+                gae_lambda=0.98, gamma=0.999, n_epochs=10, ent_coef=0.01, vf_coef=0.5)
     ## Two things ep_rew_mean cannot tell you: which actions the policy favours,
     ## and how often it actually lands rather than merely getting close.
     training_callbacks = CallbackList([ActionFrequencyCallback(), EpisodeOutcomeCallback()])
@@ -316,7 +316,7 @@ def run_test_episodes(model_path, num_episodes=10, render=True):
             episode_reward = 0
             done = False
             step_count = 0
-            max_steps = 2000  # Prevent infinite episodes
+            max_steps = 20000  # Prevent infinite episodes
             
             while not done and step_count < max_steps:
                 # Get action from trained model
@@ -438,7 +438,7 @@ def test_mode():
         return  # Go back to main menu
     
     # Configuration screen
-    num_episodes = 5  # Default
+    num_episodes = 10  # Default
     render = True  # Watching the agent play is the point of test mode
     random_target = True
     while True:

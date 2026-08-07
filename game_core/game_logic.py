@@ -35,35 +35,24 @@ def set_random_target(random_target: bool) -> None:
 
 ## You can change this to whatever
 ## There are probably better ways to do this
-def calculate_reward_and_done(gs, drawing: bool = True):
-        # Distance based rewards
-        current_x_distance: float = abs(gs.player.x - gs.target.x)
-        current_y_distance: float = abs(gs.player.y - gs.target.y)
-        current_hypotenuse: float = math.hypot(current_x_distance, current_y_distance)
 
+K_DIST, K_SPEED, GAMMA= 1.0, 8.0, 0.99
+
+def phi(gs):
+    d = math.hypot(gs.player.x - gs.target.x, gs.player.y - gs.target.y)
+    v = math.hypot(gs.player.x_acceleration, gs.player.y_acceleration)
+    return -(K_DIST * d + K_SPEED * v)
+
+def calculate_reward_and_done(gs, drawing: bool = True):
         ## Symmetric on purpose: rewarding approach more than it penalises retreat
         ## lets the agent farm reward by oscillating (move away, move back, repeat)
         ## and never landing. Weighting both directions equally makes the per-step
         ## rewards telescope to k * (start_distance - end_distance), which is
         ## path independent and so cannot be farmed.
-        distance_hypotenuse: float = gs.previous_hypotenuse - current_hypotenuse
-        current_acceleration = math.hypot(gs.player.x_acceleration, gs.player.y_acceleration)
+        reward: float = GAMMA * phi(gs) - gs.prev_phi
 
-        if gs.player.y_acceleration > 1:
-            reward: float = -20
-        else:
-            reward: float = gs.proportionality_factor_hypotenuse * distance_hypotenuse
-            reward += gs.proportionality_factor_acceleration * (gs.previous_acceleration - current_acceleration)
-
-        ## Acceration based rewards
-        # current_acceleration_h: float = distance_hypotenuse/60/60
-
-
+        gs.prev_phi = phi(gs)
         done: bool = False
-        gs.previous_distance_x = current_x_distance
-        gs.previous_distance_y = current_y_distance
-        gs.previous_hypotenuse = current_hypotenuse
-        gs.previous_acceleration = current_acceleration
         info: Dict[str, Any] = {}
 
         ## Terminal states only flag the episode as over. Resetting here would
@@ -73,24 +62,24 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         LANDING_acceleration_LIMIT: float = 1.0 
         if gs.player.y > 513:
             impact = math.hypot(gs.player.x_acceleration, gs.player.y_acceleration)
-            ## if gs.player.collided_with(gs.target) and impact <= LANDING_acceleration_LIMIT:
-            if gs.player.collided_with(gs.target):
+            if gs.player.collided_with(gs.target) and impact <= LANDING_acceleration_LIMIT:
+            ## if gs.player.collided_with(gs.target):
                 done = True
-                reward = 100
+                reward += 500
                 info["status"] = "landed_ok"
             else:
                 if drawing:
                     display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
                 done = True
-                reward = -100
-                ## info["status"] = "too_fast" if gs.player.collided_with(gs.target) else "crashed"
-                info["status"] = "crashed"
+                reward -= -200
+                info["status"] = "too_fast" if gs.player.collided_with(gs.target) else "crashed"
+                #  info["status"] = "crashed"
 
         elif gs.player.y < -50:
             if drawing:
                 display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
             done = True
-            reward = -100
+            reward -= -200
             info["status"] = "flown_too_high"
 
         ## elif, not if: now that this reads the real position rather than a
@@ -98,7 +87,7 @@ def calculate_reward_and_done(gs, drawing: bool = True):
         ## outcome instead of being relabelled out of bounds.
         elif gs.player.x < 0 or gs.player.x > 1280:
             done = True
-            reward = -100
+            reward -= -200
             info["status"] = "out_of_horizontal_bounds"
 
         return reward, done, info
@@ -117,12 +106,7 @@ class GameState:
         self.is_left_pressed: bool = False
         self.is_right_pressed: bool = False
         self.is_up_pressed: bool = False
-        self.previous_distance_x: float = abs(self.player.x - self.target.x)
-        self.previous_distance_y: float = abs(self.player.y - self.target.y)
-        self.previous_acceleration: float = math.hypot(self.player.x_acceleration, self.player.y_acceleration)
-        self.proportionality_factor_acceleration: float = 10
-        self.previous_hypotenuse: float = math.hypot(self.previous_distance_x, self.previous_distance_y)
-        self.proportionality_factor_hypotenuse: float = 20
+        self.prev_phi = phi(self)
 
     def seed(self, seed: int) -> None:
         """Reseed the game RNG so the next reset is reproducible."""
@@ -142,13 +126,8 @@ class GameState:
         self.is_left_pressed = False
         self.is_right_pressed = False
         self.is_up_pressed = False
-        self.previous_distance_x = abs(self.player.x - self.target.x)
-        self.previous_distance_y = abs(self.player.y - self.target.y)
-        self.previous_hypotenuse = math.hypot(self.previous_distance_x, self.previous_distance_y)
-        ## Must be restored like the distances above. Left stale, the first step
-        ## of an episode was paid k_acceleration * (last episode's final acceleration - 1.0),
-        ## which after a fast crash is about +30 of reward from nowhere.
-        self.previous_acceleration = math.hypot(self.player.x_acceleration, self.player.y_acceleration)
+        self.prev_phi = phi(self)
+
 
     def get_observation(self) -> ndarray:
         """Build an observation from the current state without advancing the game."""
@@ -171,6 +150,14 @@ def run_game_frame(
     if drawing:
         SCREEN.blit(GAME_BG, (0, 0))
 
+    LANDER_ACCELERATION: TextObject = TextObject(
+    text_input=f"Acceleration: {gs.player.x_acceleration:.3f}, {gs.player.y_acceleration:.3f}",
+    font=get_font(15),
+    color="White",
+    pos=(SCREEN.get_width() - 200, 50)
+    )
+    LANDER_ACCELERATION.update(SCREEN)
+
     if mode == "manual":
         LANDER_MOUSE_POS: Tuple[int, int] = pygame.mouse.get_pos()
         LANDER_BACK: Button = Button(
@@ -184,13 +171,7 @@ def run_game_frame(
         LANDER_BACK.changeColor(LANDER_MOUSE_POS)
         LANDER_BACK.update(SCREEN)
 
-        LANDER_ACCELERATION: TextObject = TextObject(
-            text_input=f"Acceleration: {gs.player.x_acceleration:.3f}, {gs.player.y_acceleration:.3f}",
-            font=get_font(15),
-            color="White",
-            pos=(SCREEN.get_width() - 200, 50)
-        )
-        LANDER_ACCELERATION.update(SCREEN)
+
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
