@@ -26,18 +26,63 @@ STATUS_NAMES = [
     "out_of_horizontal_bounds",
 ]
 
+## Short forms for the chart only. The tensorboard tags keep the full names;
+## these just stop the x axis turning into a wall of text.
+STATUS_LABELS = {
+    "landed_ok": "landed",
+    "crashed": "crashed",
+    "flown_too_high": "too high",
+    "out_of_horizontal_bounds": "out of bounds",
+    "timeout": "timeout",
+    "other": "other",
+}
+
+## The one outcome that counts as success, so it can be coloured apart.
+SUCCESS_STATUS = "landed_ok"
+
+
+def make_bar_chart(labels, freqs, colours, title, baseline=None,
+                   ylabel="fraction") -> plt.Figure:
+    """Labelled bar chart of a distribution, for logging to tensorboard.
+
+    baseline draws a dashed reference line, for when there is a meaningful
+    "no preference" level to compare against. Outcomes have no such level, so
+    they pass None.
+    """
+    fig, ax = plt.subplots(figsize=(7, 3.5), layout="constrained")
+    bars = ax.bar(labels, freqs, color=colours)
+    for bar, freq in zip(bars, freqs):
+        ## A label above a near-full bar would land outside the axes and collide
+        ## with the title, which is exactly the case worth reading, so put the
+        ## label inside the bar instead once it gets tall.
+        inside = freq > 0.92
+        ax.text(bar.get_x() + bar.get_width() / 2,
+                freq - 0.03 if inside else freq + 0.02, f"{freq:.2f}",
+                ha="center", va="top" if inside else "bottom", fontsize=8,
+                color="white" if inside else "black")
+
+    if baseline is not None:
+        ax.axhline(baseline, ls="--", lw=1, color="grey")
+
+    ## Fixed rather than autoscaled, so frames stay comparable while scrubbing
+    ## the step slider in the IMAGES tab.
+    ax.set_ylim(0, 1)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.spines[["top", "right"]].set_visible(False)
+    return fig
+
 
 class ActionFrequencyCallback(BaseCallback):
     """Log how often the policy picks each action, as a fraction per rollout.
 
-    Written to tensorboard under actions/<name>, plus actions/thrust_any for the
-    combined share of the three booster actions. The fractions over the named
-    actions sum to 1.
+    Written to tensorboard as a bar chart under actions/distribution, with the
+    booster actions highlighted so it is obvious whether the policy is braking.
     """
 
     def __init__(self, bar_chart: bool = True, figure_freq: int = 1, verbose: int = 0):
         """
-        bar_chart:   also log a labelled bar chart under actions/distribution.
+        bar_chart:   log a labelled bar chart under actions/distribution.
                      Tensorboard has no bar chart dashboard for scalars, so this
                      goes to the IMAGES tab with a slider over training steps.
         figure_freq: log that chart every Nth rollout. Each figure is a PNG in
@@ -56,38 +101,26 @@ class ActionFrequencyCallback(BaseCallback):
             self.counts += np.bincount(flat, minlength=len(ACTION_NAMES))
         return True
 
-    def _make_bar_chart(self, freqs: np.ndarray) -> plt.Figure:
-        """Bar chart of the action mix, booster actions highlighted."""
-        fig, ax = plt.subplots(figsize=(7, 3.5), layout="constrained")
-        colours = ["tab:orange" if i in THRUST_ACTIONS else "tab:blue"
-                   for i in range(len(ACTION_NAMES))]
-        bars = ax.bar(ACTION_NAMES, freqs, color=colours)
-        for bar, freq in zip(bars, freqs):
-            ax.text(bar.get_x() + bar.get_width() / 2, freq + 0.02, f"{freq:.2f}",
-                    ha="center", va="bottom", fontsize=8)
-
-        ## A uniform policy sits on this line, so anything below it on the
-        ## orange bars means the agent has actively learned not to thrust.
-        ax.axhline(1 / len(ACTION_NAMES), ls="--", lw=1, color="grey")
-        ax.set_ylim(0, 1)
-        ax.set_ylabel("fraction of steps")
-        ax.set_title(f"action mix @ {self.num_timesteps:,} timesteps"
-                     f"   (thrust {freqs[list(THRUST_ACTIONS)].sum():.2f}, orange)")
-        ax.spines[["top", "right"]].set_visible(False)
-        return fig
-
     def _on_rollout_end(self) -> None:
         total = int(self.counts.sum())
         if total:
             freqs = self.counts / total
-            # for name, freq in zip(ACTION_NAMES, freqs):
-            #     self.logger.record(f"actions/{name}", float(freq))
-            # self.logger.record("actions/thrust_any", float(freqs[list(THRUST_ACTIONS)].sum()))
 
             if self.bar_chart and self._rollouts % self.figure_freq == 0:
+                colours = ["tab:orange" if i in THRUST_ACTIONS else "tab:blue"
+                           for i in range(len(ACTION_NAMES))]
+                thrust = freqs[list(THRUST_ACTIONS)].sum()
+                fig = make_bar_chart(
+                    ACTION_NAMES, freqs, colours,
+                    ## A uniform policy sits on the baseline, so orange bars
+                    ## below it mean the agent actively learned not to thrust.
+                    title=f"action mix @ {self.num_timesteps:,} timesteps"
+                          f"   (thrust {thrust:.2f}, orange)",
+                    baseline=1 / len(ACTION_NAMES),
+                    ylabel="fraction of steps",
+                )
                 ## A Figure cannot be written to stdout/csv/json, only tensorboard.
-                self.logger.record("actions/distribution",
-                                   Figure(self._make_bar_chart(freqs), close=True),
+                self.logger.record("actions/distribution", Figure(fig, close=True),
                                    exclude=("stdout", "log", "json", "csv"))
         self._rollouts += 1
         ## Each point describes one rollout rather than all of training so far.
@@ -97,15 +130,18 @@ class ActionFrequencyCallback(BaseCallback):
 class EpisodeOutcomeCallback(BaseCallback):
     """Log how episodes ended, as fractions per rollout.
 
-    Written to tensorboard under outcomes/<status>, plus outcomes/episodes for
-    the number of episodes the fractions are over. ep_rew_mean is dominated by
-    distance shaping, so it tracks "got close" rather than "landed"; this is the
-    series that answers whether the agent is actually succeeding.
+    Written to tensorboard under outcomes/<status>, and as a bar chart under
+    outcomes/distribution. ep_rew_mean is dominated by distance shaping, so it
+    tracks "got close" rather than "landed"; this is the series that answers
+    whether the agent is actually succeeding.
     """
 
-    def __init__(self, verbose: int = 0):
+    def __init__(self, bar_chart: bool = True, figure_freq: int = 1, verbose: int = 0):
         super().__init__(verbose)
         self.counts: dict[str, int] = {}
+        self.bar_chart = bar_chart
+        self.figure_freq = max(1, figure_freq)
+        self._rollouts = 0
 
     def _on_step(self) -> bool:
         dones = self.locals.get("dones")
@@ -130,5 +166,25 @@ class EpisodeOutcomeCallback(BaseCallback):
             unexpected = sum(v for k, v in self.counts.items() if k not in STATUS_NAMES)
             if unexpected:
                 self.logger.record("outcomes/other", unexpected / total)
-            # self.logger.record("outcomes/episodes", total)
+
+            if self.bar_chart and self._rollouts % self.figure_freq == 0:
+                ## Same bars as the scalars above, including the "other" bucket
+                ## only when something landed in it, so the two always agree.
+                names = list(STATUS_NAMES) + (["other"] if unexpected else [])
+                freqs = np.array([self.counts.get(n, 0) / total for n in STATUS_NAMES]
+                                 + ([unexpected / total] if unexpected else []))
+                labels = [STATUS_LABELS.get(n, n) for n in names]
+                colours = ["tab:green" if n == SUCCESS_STATUS
+                           else "tab:grey" if n == "other" else "tab:red"
+                           for n in names]
+                landed = self.counts.get(SUCCESS_STATUS, 0) / total
+                fig = make_bar_chart(
+                    labels, freqs, colours,
+                    title=f"episode outcomes @ {self.num_timesteps:,} timesteps"
+                          f"   (landed {landed:.2f} of {total} episodes)",
+                    ylabel="fraction of episodes",
+                )
+                self.logger.record("outcomes/distribution", Figure(fig, close=True),
+                                   exclude=("stdout", "log", "json", "csv"))
+        self._rollouts += 1
         self.counts.clear()
