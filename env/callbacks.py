@@ -25,6 +25,10 @@ STATUS_NAMES = [
     "flown_too_high",
     "out_of_horizontal_bounds",
     "too_fast",
+    ## Timeouts are set by the env rather than calculate_reward_and_done, and
+    ## were missing here, so they were silently swept into outcomes/other --
+    ## hiding the one failure mode a stalling policy actually produces.
+    "timeout",
 ]
 
 ## Short forms for the chart only. The tensorboard tags keep the full names;

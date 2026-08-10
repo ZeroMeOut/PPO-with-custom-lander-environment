@@ -1,0 +1,17 @@
+{
+  "name": "baseline_old_reward",
+  "note": "the repo's reward and hyperparameters as of commit 6d25455, scored on the same yardstick as every other run",
+  "seed": 0,
+  "on_pad_rate": 0.11333333333333333,
+  "soft_landing_rate": 0.0,
+  "mean_impact_speed": 2.523897202519627,
+  "mean_return": -10.8,
+  "mean_length": 309.00333333333333,
+  "outcomes": {
+    "crashed": 256,
+    "landed_ok": 34,
+    "out_of_horizontal_bounds": 10
+  },
+  "train_seconds": 759.4,
+  "timesteps": 1000000
+}

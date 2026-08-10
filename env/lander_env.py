@@ -4,6 +4,7 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 from typing import Any, Dict, List, Tuple, Union, Optional
 
+import game_core.game_logic as game_logic
 from game_core.game_logic import run_game_frame, GameState
 
 
@@ -33,11 +34,13 @@ class LanderEnvironment(gym.Env):
         ## Action space: 0: left, 1: right, 2: up, 3: upleft, 4: upright, 5: do nothing
         self.action_space = spaces.Discrete(6)
         
-        ## Observation space: 2D array with 6 elements
-        self.observation_space = spaces.Box(low=np.array([-1380, -650, -5.0, -5.0, 0, 0]),     
-                                            high=np.array([1380, 650, 5.0, 5.0, 1280, 600]),
+        ## Observation space: 6 elements, all scaled to roughly [-1, 1] by
+        ## GameState.get_observation. Bounds are wider than anything reachable so
+        ## the clip below is a guard rather than something that fires normally.
+        self.observation_space = spaces.Box(low=np.array([-2.5, -1.5, -4.0, -4.0, -1.5, -1.5]),
+                                            high=np.array([2.5, 1.5, 4.0, 4.0, 1.5, 1.5]),
                                             shape=(6,), dtype=np.float64)
-        
+
         self.seed()
         self.current_observation: Optional[np.ndarray] = None
     
@@ -60,8 +63,18 @@ class LanderEnvironment(gym.Env):
             truncated = not terminated and self._elapsed_steps >= self.max_episode_steps
             if truncated:
                 info["status"] = "timeout"
-        self.current_observation = observation
-        return observation, reward, terminated, truncated, info
+                reward -= game_logic.REWARD.timeout_penalty
+                ## Running out of clock is not something the agent did wrong, so
+                ## the value of the cut-off state should still be bootstrapped.
+                ## SB3 only does that when it sees this key; without it PPO
+                ## treats every timeout as a real terminal worth zero, which
+                ## quietly teaches the policy that surviving to step 1000 is
+                ## worthless no matter where it had got to.
+                info["TimeLimit.truncated"] = True
+        self.current_observation = np.clip(observation,
+                                           self.observation_space.low,
+                                           self.observation_space.high)
+        return self.current_observation, reward, terminated, truncated, info
 
     def reset(
         self, 
@@ -77,7 +90,9 @@ class LanderEnvironment(gym.Env):
         ## Read the freshly reset state directly. Stepping a frame here with a
         ## hardcoded action meant every episode opened with a thrust the agent
         ## never chose, so this never returned the actual initial state.
-        observation: np.ndarray = self.game_state.get_observation()
+        observation: np.ndarray = np.clip(self.game_state.get_observation(),
+                                          self.observation_space.low,
+                                          self.observation_space.high)
         self.current_observation = observation
         return observation, {} # Gym 0.26+ reset returns (observation, info)
 

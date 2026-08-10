@@ -133,12 +133,16 @@ def training_mode():
     ## n_steps is per env, so divide it to keep the rollout buffer at 2048 transitions.
     model = PPO('MlpPolicy', env, verbose=1, tensorboard_log=logdir, device='cpu',
                 n_steps=2048 // n_envs,
-                gae_lambda=0.98, gamma=0.999, n_epochs=10, ent_coef=0.05, vf_coef=0.5)
+                gae_lambda=0.98, gamma=0.999, n_epochs=10, ent_coef=0.01, vf_coef=0.5)
     ## Two things ep_rew_mean cannot tell you: which actions the policy favours,
     ## and how often it actually lands rather than merely getting close.
     training_callbacks = CallbackList([ActionFrequencyCallback(), EpisodeOutcomeCallback()])
 
-    TIMESTEPS = 10000000
+    ## Steps between checkpoints, not the whole budget: the loop below runs 10 of
+    ## these. Kept small enough that a checkpoint lands every few minutes, since
+    ## this is also the only point at which ESC is noticed -- at 10_000_000 the
+    ## first save and the first chance to quit were both hours away.
+    TIMESTEPS = 200000
     iters = 0
     while iters < 10:  # Run for 10 iterations
         iters += 1
@@ -156,21 +160,31 @@ def training_mode():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     env.close()
-                    if not pygame.get_init():
-                        pygame.init()
-                    main_menu() # Go back to main menu
-                    return # Exit training_mode function
+                    ## Returning is enough: main_menu is a loop and called this,
+                    ## so it picks straight back up. Calling it again from here
+                    ## instead nested a second menu loop inside this one, and
+                    ## every trip through training piled on another stack frame.
+                    return
 
     print("Training finished!")
-    if not pygame.get_init():
-        pygame.init()
-    main_menu()
+    env.close()
 
 ## I got bored and told Claude to write the test model section for me
 ## It did a pretty good job first try so I am just gonna leave it mostly as is
 def get_available_models():
-    """Get all available trained models from the models directory."""
+    """Get all available trained models from the models directory.
+
+    pretrained/ is listed alongside them so there is something to watch before
+    you have trained anything yourself. Any *.zip in there is offered as is,
+    rather than being read as a numbered checkpoint of a training run.
+    """
     models = []
+    for model_file in sorted(glob.glob(os.path.join("pretrained", "*.zip"))):
+        models.append({
+            'name': f"{os.path.basename(model_file)[:-4]} (pretrained)",
+            'path': model_file,
+            'timestamp': 'pretrained',
+        })
     if os.path.exists("models"):
         model_dirs = [d for d in os.listdir("models") if os.path.isdir(os.path.join("models", d))]
         for model_dir in model_dirs:
@@ -307,17 +321,22 @@ def run_test_episodes(model_path, num_episodes=10, render=True):
         
         # Statistics tracking
         episode_rewards = []
-        success_count = 0
-        crash_count = 0
-        out_of_bounds_count = 0
-        
+        impact_speeds = []
+        ## Counted by status rather than into three named buckets, which between
+        ## them did not cover flown_too_high or timeout: those episodes were
+        ## included in the total but shown in no row, so the results screen did
+        ## not add up.
+        outcome_counts = {}
+
         for episode in range(num_episodes):
             obs, _ = env.reset()
             episode_reward = 0
             done = False
             step_count = 0
-            max_steps = 200000  # Prevent infinite episodes
-            
+            ## The env truncates at max_episode_steps on its own, so this is only
+            ## a backstop against a policy that somehow never terminates.
+            max_steps = env.max_episode_steps + 1
+
             while not done and step_count < max_steps:
                 # Get action from trained model
                 action, _ = model.predict(obs, deterministic=True)
@@ -335,28 +354,27 @@ def run_test_episodes(model_path, num_episodes=10, render=True):
                     if event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_ESCAPE:
                             env.close()
-                            return episode_rewards, success_count, crash_count, out_of_bounds_count, episode + 1
-                
+                            return episode_rewards, outcome_counts, impact_speeds, episode + 1
+
                 if done:
-                    # Count different outcomes
-                    if "status" in info:
-                        if info["status"] == "landed_ok":
-                            success_count += 1
-                        elif info["status"] == "crashed":
-                            crash_count += 1
-                        elif info["status"] == "out_of_horizontal_bounds":
-                            out_of_bounds_count += 1
+                    status = info.get("status", "unknown")
+                    outcome_counts[status] = outcome_counts.get(status, 0) + 1
+                    if "impact_speed" in info:
+                        impact_speeds.append(info["impact_speed"])
                     break
-            
+
             episode_rewards.append(episode_reward)
             print(f"Episode {episode + 1}: Reward = {episode_reward:.2f}, Steps = {step_count}")
-        
+
         # env.close()
         # print("Testing finished!") ## Commented out to avoid pygame quitting before displaying results
-        return episode_rewards, success_count, crash_count, out_of_bounds_count, num_episodes
-        
-    except Exception as e:
-        print(f"Error loading model: {e}")
+        return episode_rewards, outcome_counts, impact_speeds, num_episodes
+
+    except FileNotFoundError:
+        ## Only the load is reported as a load failure. Catching everything here
+        ## meant a bug anywhere in the rollout was printed as "Error loading
+        ## model", which sent debugging off in the wrong direction.
+        print(f"Could not find a model at {model_path}")
         return None
 
 def display_results(results):
@@ -364,15 +382,27 @@ def display_results(results):
     if results is None:
         return
     
-    episode_rewards, success_count, crash_count, out_of_bounds_count, total_episodes = results
-    
+    episode_rewards, outcome_counts, impact_speeds, total_episodes = results
+
     # Calculate statistics
     avg_reward = np.mean(episode_rewards)
     std_reward = np.std(episode_rewards)
     max_reward = np.max(episode_rewards)
     min_reward = np.min(episode_rewards)
+    success_count = outcome_counts.get("landed_ok", 0)
     success_rate = (success_count / total_episodes) * 100
-    
+
+    ## Readable names for every status the env can report, so each one gets a
+    ## row and the rows sum to the episode count.
+    STATUS_ROWS = [
+        ("landed_ok", "Successful Landings"),
+        ("too_fast", "Hit the pad too fast"),
+        ("crashed", "Crashes"),
+        ("out_of_horizontal_bounds", "Out of Bounds"),
+        ("flown_too_high", "Flew too high"),
+        ("timeout", "Ran out of time"),
+    ]
+
     while True:
         SCREEN.fill("black")
         
@@ -383,27 +413,33 @@ def display_results(results):
         
         # Results
         y_offset = 120
-        line_spacing = 40
-        
+        line_spacing = 36
+
+        mean_impact = f"{np.mean(impact_speeds):.2f}" if impact_speeds else "n/a"
         results_text = [
             f"Episodes Completed: {total_episodes}",
             f"Average Reward: {avg_reward:.2f} ± {std_reward:.2f}",
             f"Best Episode: {max_reward:.2f}",
             f"Worst Episode: {min_reward:.2f}",
+            ## The number that says whether the lander is flying or just falling.
+            f"Mean touchdown speed: {mean_impact}",
             f"",
             f"Successful Landings: {success_count} ({success_rate:.1f}%)",
-            f"Crashes: {crash_count}",
-            f"Out of Bounds: {out_of_bounds_count}",
         ]
-        
+        results_text += [f"{label}: {outcome_counts.get(status, 0)}"
+                         for status, label in STATUS_ROWS[1:]
+                         if outcome_counts.get(status, 0)]
+
         for i, text in enumerate(results_text):
             if text:  # Skip empty lines
-                color = "Green" if "Successful" in text else "White"
-                if "Crashes" in text and crash_count > 0:
+                color = "White"
+                if "Successful" in text:
+                    color = "Green"
+                elif "Crashes" in text or "too fast" in text:
                     color = "Red"
-                elif "Out of Bounds" in text and out_of_bounds_count > 0:
+                elif "Out of Bounds" in text or "too high" in text:
                     color = "Orange"
-                
+
                 result_text = get_font(30).render(text, True, color)
                 result_rect = result_text.get_rect(center=(640, y_offset + i * line_spacing))
                 SCREEN.blit(result_text, result_rect)
@@ -411,8 +447,11 @@ def display_results(results):
         # Buttons
         MOUSE_POS = pygame.mouse.get_pos()
         
-        BACK_BUTTON = Button(image=None, pos=(640, 550),
-                            text_input="BACK TO MENU", font=get_font(40), 
+        ## Placed below the last row rather than at a fixed 550, since the number
+        ## of outcome rows now depends on which failures actually happened.
+        button_y = min(650, y_offset + len(results_text) * line_spacing + 30)
+        BACK_BUTTON = Button(image=None, pos=(640, button_y),
+                            text_input="BACK TO MENU", font=get_font(40),
                             base_color="White", hovering_color="Green")
         BACK_BUTTON.changeColor(MOUSE_POS)
         BACK_BUTTON.update(SCREEN)

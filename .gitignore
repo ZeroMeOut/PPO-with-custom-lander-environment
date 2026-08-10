@@ -14,5 +14,5 @@ venv/
 
 logs/
 models/
-
-.gitignore
+results/*
+!results/*.json

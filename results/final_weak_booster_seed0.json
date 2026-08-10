@@ -1,0 +1,50 @@
+{
+  "name": "final_weak_booster",
+  "seed": 0,
+  "timesteps": 3000000,
+  "train_seconds": 2247.7,
+  "reward": {
+    "w_dist": 100.0,
+    "w_speed": 50.0,
+    "approach_scale": 200.0,
+    "approach_v_min": 0.2,
+    "approach_v_max": 2.5,
+    "time_penalty": 0.05,
+    "fuel_penalty": 0.05,
+    "landing_bonus": 200.0,
+    "too_fast_penalty": 50.0,
+    "crash_penalty": 100.0,
+    "high_penalty": 100.0,
+    "oob_penalty": 100.0,
+    "timeout_penalty": 0.0,
+    "landing_speed_limit": 1.0
+  },
+  "ppo": {
+    "policy": "MlpPolicy",
+    "n_envs": 8,
+    "n_steps": 256,
+    "batch_size": 64,
+    "n_epochs": 10,
+    "learning_rate": 0.0003,
+    "gamma": 0.999,
+    "gae_lambda": 0.98,
+    "ent_coef": 0.01,
+    "vf_coef": 0.5,
+    "clip_range": 0.2
+  },
+  "max_episode_steps": 1000,
+  "random_target": true,
+  "spawn_max_gap": 250,
+  "acceleration": 0.005,
+  "soft_landing_rate": 0.3867,
+  "on_pad_rate": 0.55,
+  "mean_impact_speed": 0.792,
+  "mean_return": 40.22,
+  "mean_length": 623.5,
+  "outcomes": {
+    "timeout": 104,
+    "landed_ok": 116,
+    "crashed": 31,
+    "too_fast": 49
+  }
+}
