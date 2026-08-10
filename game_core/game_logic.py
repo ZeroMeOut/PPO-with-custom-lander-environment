@@ -72,11 +72,20 @@ class RewardConfig:
     The shaping is potential based: F = phi(s') - phi(s). Written as a plain
     difference rather than the textbook gamma * phi(s') - phi(s) on purpose.
     With gamma < 1 the discounted form leaves a residual (gamma - 1) * phi per
-    step, and since phi is negative that residual is *positive* -- a small
-    payment for merely staying alive, which is exactly the incentive that makes
-    an agent hover instead of land. The plain difference telescopes exactly to
-    phi(end) - phi(start), so the shaping total depends only on where the
-    episode started and finished and cannot be farmed by any trajectory.
+    step, and since phi is negative that residual is *positive*: a payment for
+    merely staying alive, growing with distance from the pad.
+
+    That is not a rounding error. An earlier version of this file used
+    gamma = 0.99 over phi = -(1.0 * d + 8.0 * v), which paid +0.01 * d every
+    step for sitting still -- +5 per step at 500px, so ~5000 over an episode
+    against a landing bonus of +500. Measured against fixed policies, hovering
+    scored 6267 and a policy that actually landed 71 times in 150 scored 3965.
+    Every behaviour scored hugely positive and doing nothing scored best, with
+    value targets in the thousands: the value loss explosion, in one line.
+
+    The plain difference telescopes exactly to phi(end) - phi(start), so the
+    shaping total depends only on where the episode started and finished and
+    cannot be farmed by any trajectory.
     """
     ## Potential weights. w_speed is what makes braking pay: without it nothing
     ## in the reward distinguishes a controlled descent from a free fall.
