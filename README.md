@@ -57,12 +57,22 @@ It was a reward problem, and then it was a physics problem. Both were measured
 rather than guessed, with `tools/experiment.py`.
 
 **Nothing ever asked it to brake.** `landed_ok` only checked that the lander
-touched the pad, at any speed. A policy trained for 1M steps on the old reward
-scored a 0.0% soft-landing rate over 300 episodes at a mean impact speed of
-2.524 px/frame -- free fall terminal velocity is 2.53, and its mean episode
+touched the pad, at any speed, and the banded shaping had no speed term, so
+nothing anywhere in the reward mentioned velocity. A policy trained for 1M steps
+on it scored a 0.0% soft-landing rate over 300 episodes at a mean impact speed
+of 2.524 px/frame -- free fall terminal velocity is 2.53, and its mean episode
 length was 309 against a 307 step free fall. It had not learned to fly at all,
 because falling scored exactly as well. Touching the pad now needs an impact
 speed under `landing_speed_limit`, and the potential charges for excess speed.
+
+**The bands had no gradient where it mattered.** `phi` paid a flat +/-10 for
+crossing a distance band and 0 otherwise, and the bands measured 54-125px wide,
+so the whole final approach sat inside band 0 with no signal at all. Band width
+was derived from the spawn distance, so identical progress paid differently from
+episode to episode, and because `prev_band` snapped on any change, crossing five
+bands at once paid +10 where crossing them one at a time paid +50. It is also
+not a potential despite the name -- it mutates state and is returned as the
+reward directly. It is a continuous potential now, applied as `phi(s') - phi(s)`.
 
 **Stalling paid better than landing.** Timing out cost nothing and the distance
 shaping was already banked, so hovering near the pad beat committing to a
@@ -70,14 +80,6 @@ landing unless the agent could already land more than about half the time.
 Hovering was also free, because thrust had no cost. There is a `fuel_penalty`
 per frame of thrust now, which is what real Lunar Lander charges, and a small
 `time_penalty`.
-
-**The shaping walled off every stationary state.** Distance and speed entered
-the potential independently, so a hovering lander that began to move paid for
-the speed at once and only earned it back after closing ~233px. Inside that
-radius moving was never locally worth it, and every configuration tried against
-that potential converged on hovering until the clock ran out. The speed
-allowance now grows with distance (`approach_scale`): cruise fast, arrive slow.
-Fixing this dropped timeouts from 300/300 to 44/300.
 
 **Most episodes could not be flown.** This turned out to be the real ceiling.
 The booster accelerates at 0.005 px/frame², so an accelerate-then-decelerate
@@ -91,6 +93,38 @@ and 0.0% at every distance beyond it. That is not a policy failing to learn. So
 
 Set `SPAWN_MAX_GAP = None`, `ACCELERATION = 0.005` and `fuel_penalty = 0.0` to
 get the old task back.
+
+## A wrong turn worth recording (why `approach_scale` exists)
+
+`approach_scale` fixes a problem the rewrite introduced, not one the bands had.
+
+Replacing the bands with `phi = -(w_dist*d/DIST_SCALE + w_speed*v/SPEED_SCALE)`
+made distance and speed independent penalties. But speed is the derivative of
+distance: closing the gap *requires* carrying speed, so the two terms fight, and
+the balance between them decides how badly. With `w_dist=100, DIST_SCALE=1400`
+and `w_speed=50, SPEED_SCALE=3`, carrying one unit of speed cost 16.67 of
+potential while closing a pixel earned 0.0714, so **233px had to be closed
+before moving at all was worth it**. A lander hovering nearer than that could
+not construct any route to the pad whose shaping paid for the speed it needed.
+Traced along a textbook approach from 400px, the potential falls from -28.6 to
+-47.6 before recovering: hundreds of steps of negative reward for flying
+correctly, with the refund arriving only if the approach finishes. Every config
+tried against it converged on hovering, which looked like a hyperparameter
+problem for three rounds of sweeps and was not one.
+
+Worth noting the same functional form on an older commit used `-(1.0*d + 8.0*v)`
+-- break-even 8px rather than 233px. The form was never the problem; scaling
+distance by 1400 and speed by only 3 inflated the speed term about 29-fold.
+
+Two ways out: weight the terms sanely, or stop charging for speed that is
+appropriate to the distance. This takes the second, since it also states the
+thing you actually want -- travel fast when far, arrive slow when close:
+
+    v_ref(d) = clamp(d / approach_scale, approach_v_min, approach_v_max)
+    phi = -(w_dist * d / DIST_SCALE + w_speed * max(0, v - v_ref(d)) / SPEED_SCALE)
+
+The valley drops from 19.0 deep to 2.4, and the residual is the genuine cost of
+arriving too hot. Timeouts went from 300/300 to 44/300 on the next run.
 
 ## Where it ended up
 

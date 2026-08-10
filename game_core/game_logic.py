@@ -87,12 +87,16 @@ class RewardConfig:
     ## it: v_ref = clamp(distance / approach_scale, approach_v_min, approach_v_max).
     ##
     ## Charging for speed everywhere, which is what approach_scale = 0 does,
-    ## builds a wall around every hovering state. Distance and speed enter the
-    ## potential independently, so a stationary lander that begins to move pays
-    ## for the speed immediately and only earns it back after closing ~233px --
-    ## and inside that radius moving is never locally worth it. Every config
+    ## builds a wall around every hovering state, and this rewrite walked
+    ## straight into it. Distance and speed enter the potential independently,
+    ## but speed is the derivative of distance, so closing the gap requires
+    ## carrying the thing being penalised. At w_dist=100 over DIST_SCALE=1400
+    ## against w_speed=50 over SPEED_SCALE=3, a unit of speed costs 16.67 while
+    ## a pixel earns 0.0714: ~233px had to be closed before moving was worth it,
+    ## and nearer than that no route to the pad paid for itself. Every config
     ## tried against that potential converged on hovering until the clock ran
-    ## out, which is exactly the behaviour it rewards.
+    ## out, which is exactly the behaviour it rewards. (The banded shaping this
+    ## replaced had the opposite flaw -- no speed term at all.)
     ##
     ## Making the allowance proportional to distance says the sensible thing
     ## instead: far away, travel fast; close in, arrive slowly. Approaching the
