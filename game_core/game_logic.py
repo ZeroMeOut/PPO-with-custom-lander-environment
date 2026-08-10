@@ -25,9 +25,6 @@ STATIC_TARGET_X: int = 590
 SPAWN_X_MIN: int = 20
 SPAWN_X_MAX: int = 1200
 
-## get_font re-reads the .ttf from disk on every call, so build the HUD font once.
-HUD_FONT = get_font(15)
-
 def set_render_enabled(enabled: bool) -> None:
     global RENDER_ENABLED
     RENDER_ENABLED = enabled
@@ -35,39 +32,44 @@ def set_render_enabled(enabled: bool) -> None:
 def set_random_target(random_target: bool) -> None:
     global RANDOM_TARGET
     RANDOM_TARGET = random_target
+    
+K_DIST, K_SPEED = 1.0, 8.0
 
 def phi(gs):
     d = math.hypot(gs.player.x - gs.target.x, gs.player.y - gs.target.y)
-    band = int(d / gs.multiple)        
-    if band < gs.prev_band:
-        gs.prev_band = band
-        return 10
-    if band > gs.prev_band:
-        gs.prev_band = band
-        return -10
-    return 0
+    v = math.hypot(gs.player.x_acceleration, gs.player.y_acceleration)
+    return -(K_DIST * d + K_SPEED * v)
+
+def speed(gs):
+    return math.hypot(gs.player.x_acceleration, gs.player.y_acceleration)
 
 def calculate_reward_and_done(gs, drawing: bool = True):
-        reward: float = phi(gs)
+        reward: float = phi(gs) - gs.prev_phi
 
+        gs.prev_phi = phi(gs)
         done: bool = False
         info: Dict[str, Any] = {}
 
-        ## Terminal states only flag the episode as over. Resetting here would
-        ## overwrite the state before run_game_frame builds the observation, so
-        ## the caller was handed the next episode's spawn point as the terminal
-        ## observation. Respawning belongs to reset().
+        LANDING_acceleration_LIMIT: float = 1.0 
         if gs.player.y > 513:
-            if gs.player.collided_with(gs.target):
-                done = True
-                reward += 100
-                info["status"] = "landed_ok"
+            impact = speed(gs)
+            if gs.player.collided_with(gs.target): 
+                if impact <= LANDING_acceleration_LIMIT:
+                    done = True
+                    reward += 200
+                    info["status"] = "landed_ok"
+                else:
+                    if drawing:
+                        display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
+                    done = True
+                    reward -= 50
+                    info["status"] = "too_fast"
             else:
                 if drawing:
                     display_image(EXPLOSION_IMAGE, gs.player.x - 17, gs.player.y - 18)
                 done = True
                 reward -= 100
-                info["status"] = "crashed"
+                info["status"] = "crashed" 
 
         elif gs.player.y < -50:
             if drawing:
@@ -76,12 +78,9 @@ def calculate_reward_and_done(gs, drawing: bool = True):
             reward -= 100
             info["status"] = "flown_too_high"
 
-        ## elif, not if: now that this reads the real position rather than a
-        ## post-reset one, a frame that reaches the ground must keep its
-        ## outcome instead of being relabelled out of bounds.
         elif gs.player.x < 0 or gs.player.x > 1280:
             done = True
-            reward -= 100
+            reward -= -100
             info["status"] = "out_of_horizontal_bounds"
 
         return reward, done, info
@@ -99,9 +98,8 @@ class GameState:
 
         self.is_left_pressed: bool = False
         self.is_right_pressed: bool = False
-        self.is_up_pressed: bool = False    
-        self.multiple = math.hypot(self.player.x - self.target.x, self.player.y - self.target.y)/10
-        self.prev_band = 10
+        self.is_up_pressed: bool = False
+        self.prev_phi = phi(self)
 
     def seed(self, seed: int) -> None:
         """Reseed the game RNG so the next reset is reproducible."""
@@ -121,11 +119,7 @@ class GameState:
         self.is_left_pressed = False
         self.is_right_pressed = False
         self.is_up_pressed = False
-        ## Must be restored like the positions above. Left stale, the first step
-        ## of an episode is paid against the previous episode's final state.   
-        self.multiple = math.hypot(self.player.x - self.target.x, self.player.y - self.target.y)/10
-        self.prev_band = 10
-
+        self.prev_phi = phi(self)
 
 
     def get_observation(self) -> ndarray:
@@ -149,28 +143,28 @@ def run_game_frame(
     if drawing:
         SCREEN.blit(GAME_BG, (0, 0))
 
-        ## Debug readout. Must stay inside `if drawing`: built unconditionally it
-        ## rendered text on every training step and cost ~150x of the throughput.
-        LANDER_ACCELERATION: TextObject = TextObject(
-            text_input=f"Acceleration: {gs.player.x_acceleration:.3f}, {gs.player.y_acceleration:.3f}",
-            font=HUD_FONT,
-            color="White",
-            pos=(SCREEN.get_width() - 200, 50)
-        )
-        LANDER_ACCELERATION.update(SCREEN)
+    LANDER_ACCELERATION: TextObject = TextObject(
+    text_input=f"Acceleration: {gs.player.x_acceleration:.3f}, {gs.player.y_acceleration:.3f}",
+    font=get_font(15),
+    color="White",
+    pos=(SCREEN.get_width() - 200, 50)
+    )
+    LANDER_ACCELERATION.update(SCREEN)
 
     if mode == "manual":
         LANDER_MOUSE_POS: Tuple[int, int] = pygame.mouse.get_pos()
         LANDER_BACK: Button = Button(
-            image=None,
+            image=None, 
             pos=(100, 50),
-            text_input="BACK",
-            font=get_font(45),
-            base_color="White",
+            text_input="BACK", 
+            font=get_font(45), 
+            base_color="White", 
             hovering_color="Green"
         )
         LANDER_BACK.changeColor(LANDER_MOUSE_POS)
         LANDER_BACK.update(SCREEN)
+
+
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -212,7 +206,7 @@ def run_game_frame(
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-                sys.exit()
+                sys.exit()    
 
         if action == 0:  # left
             player_x_acceleration = -0.005
@@ -257,3 +251,4 @@ def run_game_frame(
 
     observation: ndarray = gs.get_observation()
     return observation, reward, done, info
+

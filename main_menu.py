@@ -138,7 +138,7 @@ def training_mode():
     ## and how often it actually lands rather than merely getting close.
     training_callbacks = CallbackList([ActionFrequencyCallback(), EpisodeOutcomeCallback()])
 
-    TIMESTEPS = 10000000
+    TIMESTEPS = 100000
     iters = 0
     while iters < 10:  # Run for 10 iterations
         iters += 1
