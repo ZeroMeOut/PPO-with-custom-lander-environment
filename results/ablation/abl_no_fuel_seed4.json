@@ -1,0 +1,119 @@
+{
+  "name": "abl_no_fuel",
+  "seed": 4,
+  "timesteps": 3000000,
+  "train_seconds": 1226.0,
+  "reward": {
+    "w_dist": 100.0,
+    "w_speed": 50.0,
+    "approach_scale": 200.0,
+    "approach_v_min": 0.2,
+    "approach_v_max": 2.5,
+    "time_penalty": 0.05,
+    "fuel_penalty": 0.0,
+    "landing_bonus": 200.0,
+    "too_fast_penalty": 50.0,
+    "crash_penalty": 100.0,
+    "high_penalty": 100.0,
+    "oob_penalty": 100.0,
+    "timeout_penalty": 0.0,
+    "landing_speed_limit": 1.0,
+    "shaping": "potential"
+  },
+  "ppo": {
+    "policy": "MlpPolicy",
+    "n_envs": 8,
+    "n_steps": 256,
+    "batch_size": 64,
+    "n_epochs": 10,
+    "learning_rate": 0.0003,
+    "gamma": 0.999,
+    "gae_lambda": 0.98,
+    "ent_coef": 0.01,
+    "vf_coef": 0.5,
+    "clip_range": 0.2
+  },
+  "max_episode_steps": 1000,
+  "random_target": true,
+  "spawn_max_gap": 250,
+  "acceleration": 0.01,
+  "curve": [
+    {
+      "timesteps": 500000,
+      "soft_landing_rate": 0.94,
+      "on_pad_rate": 0.94,
+      "mean_impact_speed": 0.486,
+      "outcomes": {
+        "landed_ok": 94,
+        "crashed": 6
+      }
+    },
+    {
+      "timesteps": 1000000,
+      "soft_landing_rate": 0.04,
+      "on_pad_rate": 0.04,
+      "mean_impact_speed": 0.221,
+      "outcomes": {
+        "timeout": 95,
+        "crashed": 1,
+        "landed_ok": 4
+      }
+    },
+    {
+      "timesteps": 1500000,
+      "soft_landing_rate": 0.06,
+      "on_pad_rate": 0.68,
+      "mean_impact_speed": 1.908,
+      "outcomes": {
+        "too_fast": 62,
+        "crashed": 32,
+        "landed_ok": 6
+      }
+    },
+    {
+      "timesteps": 2000000,
+      "soft_landing_rate": 0.0,
+      "on_pad_rate": 0.0,
+      "mean_impact_speed": null,
+      "outcomes": {
+        "out_of_horizontal_bounds": 64,
+        "timeout": 36
+      }
+    },
+    {
+      "timesteps": 2500000,
+      "soft_landing_rate": 0.52,
+      "on_pad_rate": 0.74,
+      "mean_impact_speed": 0.686,
+      "outcomes": {
+        "too_fast": 22,
+        "crashed": 23,
+        "landed_ok": 52,
+        "timeout": 3
+      }
+    },
+    {
+      "timesteps": 3000000,
+      "soft_landing_rate": 0.69,
+      "on_pad_rate": 0.69,
+      "mean_impact_speed": 0.25,
+      "outcomes": {
+        "landed_ok": 69,
+        "crashed": 27,
+        "out_of_horizontal_bounds": 3,
+        "timeout": 1
+      }
+    }
+  ],
+  "soft_landing_rate": 0.71,
+  "on_pad_rate": 0.7167,
+  "mean_impact_speed": 0.331,
+  "mean_return": 114.83,
+  "mean_length": 665.1,
+  "outcomes": {
+    "landed_ok": 213,
+    "crashed": 75,
+    "out_of_horizontal_bounds": 10,
+    "too_fast": 2
+  }
+}

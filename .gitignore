@@ -14,5 +14,9 @@ venv/
 
 logs/
 models/
+## Keep the numeric summaries, drop the model zips they came with.
 results/*
 !results/*.json
+!results/ablation/
+results/ablation/*
+!results/ablation/*.json

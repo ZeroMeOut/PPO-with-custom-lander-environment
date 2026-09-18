@@ -27,6 +27,7 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
 
 import game_core.game_logic as game_logic
@@ -62,6 +63,12 @@ def experiment(reward=None, max_episode_steps=1000, random_target=True,
             "random_target": random_target,
             "spawn_max_gap": spawn_max_gap,
             "acceleration": acceleration}
+
+
+def ABLATION(reward=None, **ppo):
+    """An ablation run: the task pinned to the setting that works, so the only
+    thing varying between these is the reward term named in `reward`."""
+    return experiment(reward=reward, spawn_max_gap=250, acceleration=0.01, **ppo)
 
 
 ## Each entry is one hypothesis. Comments say what it is meant to isolate.
@@ -168,6 +175,47 @@ EXPERIMENTS = {
     ## Does the capped geometry alone carry it, on the booster the game shipped
     ## with? This decides whether ACCELERATION has to change at all.
     "final_weak_booster": experiment(spawn_max_gap=250, acceleration=0.005),
+
+    ## ------------------------------------------------------------------
+    ## Round seven: leave-one-out ablation of the reward.
+    ##
+    ## Everything above changed several things between runs, so "the reward got
+    ## better" was never attributed to a part of it. These hold the task fixed at
+    ## the setting that works (gap 250, acceleration 0.01) and vary one reward
+    ## term at a time against abl_full, so any difference is that term.
+    ## ------------------------------------------------------------------
+    "abl_full": ABLATION(),
+
+    ## The reward exactly as it was before any of this: banded shaping, no speed
+    ## gate, no fuel, no time cost -- but on the task that is actually flyable.
+    ## Separates "the reward was wrong" from "the task was impossible".
+    "abl_original_reward": ABLATION(reward=dict(
+        shaping="banded", landing_speed_limit=math.inf,
+        fuel_penalty=0.0, time_penalty=0.0)),
+
+    ## The single claim that started all of this: touching the pad at any speed
+    ## counts as a landing.
+    "abl_no_gate": ABLATION(reward=dict(landing_speed_limit=math.inf)),
+
+    ## Each per-step cost, alone and together.
+    "abl_no_fuel": ABLATION(reward=dict(fuel_penalty=0.0)),
+    "abl_no_time": ABLATION(reward=dict(time_penalty=0.0)),
+    "abl_no_fuel_no_time": ABLATION(reward=dict(fuel_penalty=0.0, time_penalty=0.0)),
+
+    ## Was the distance-gated speed allowance necessary, or would a flat speed
+    ## penalty have done? approach_scale = 0 is the flat version.
+    "abl_flat_speed": ABLATION(reward=dict(approach_scale=0.0)),
+
+    ## No speed term in the potential at all. The gate still asks for a soft
+    ## touchdown, so this asks whether shaping needs to mention speed.
+    "abl_no_speed_term": ABLATION(reward=dict(w_speed=0.0)),
+
+    ## The shaping form, holding everything else: bands instead of a potential.
+    "abl_banded_shaping": ABLATION(reward=dict(shaping="banded")),
+
+    ## No shaping whatsoever -- terminal rewards and per-step costs only. If the
+    ## task is easy enough once it is flyable, sparse may simply work.
+    "abl_no_shaping": ABLATION(reward=dict(shaping="none")),
 }
 
 
@@ -206,7 +254,35 @@ def evaluate(model, n_episodes=300, seed0=100_000, max_episode_steps=1000):
     }
 
 
-def run(name, timesteps, seed, eval_episodes, results_dir):
+class CurveCallback(BaseCallback):
+    """Score the policy every `every` steps, so a run produces a curve.
+
+    An ablation that merely learns *slower* looks identical to one that never
+    learns if you only read the last number.
+    """
+
+    def __init__(self, every, episodes, max_episode_steps):
+        super().__init__()
+        self.every = every
+        self.episodes = episodes
+        self.max_episode_steps = max_episode_steps
+        self.curve = []
+        self._next = every
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps >= self._next:
+            self._next += self.every
+            scored = evaluate(self.model, n_episodes=self.episodes,
+                              max_episode_steps=self.max_episode_steps)
+            self.curve.append({"timesteps": self.num_timesteps,
+                               "soft_landing_rate": scored["soft_landing_rate"],
+                               "on_pad_rate": scored["on_pad_rate"],
+                               "mean_impact_speed": scored["mean_impact_speed"],
+                               "outcomes": scored["outcomes"]})
+        return True
+
+
+def run(name, timesteps, seed, eval_episodes, results_dir, eval_every=0, curve_episodes=100):
     config = EXPERIMENTS[name]
     set_reward_config(config["reward"])
     set_random_target(config["random_target"])
@@ -222,8 +298,12 @@ def run(name, timesteps, seed, eval_episodes, results_dir):
                        env_kwargs={"max_episode_steps": max_episode_steps})
     model = PPO(policy, env, verbose=0, device="cpu", seed=seed, **ppo_kwargs)
 
+    curve_cb = None
+    if eval_every:
+        curve_cb = CurveCallback(eval_every, curve_episodes, max_episode_steps)
+
     started = time.time()
-    model.learn(total_timesteps=timesteps)
+    model.learn(total_timesteps=timesteps, callback=curve_cb)
     train_seconds = time.time() - started
 
     result = {
@@ -237,6 +317,7 @@ def run(name, timesteps, seed, eval_episodes, results_dir):
         "random_target": config["random_target"],
         "spawn_max_gap": config["spawn_max_gap"],
         "acceleration": config["acceleration"],
+        "curve": curve_cb.curve if curve_cb else [],
         **evaluate(model, n_episodes=eval_episodes, max_episode_steps=max_episode_steps),
     }
     env.close()
@@ -256,6 +337,9 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--eval-episodes", type=int, default=300)
     parser.add_argument("--results-dir", default="results")
+    parser.add_argument("--eval-every", type=int, default=0,
+                        help="score the policy every N steps to build a curve")
+    parser.add_argument("--curve-episodes", type=int, default=100)
     parser.add_argument("--threads", type=int, default=2,
                         help="torch threads; 2 measured fastest on 4 cores")
     args = parser.parse_args()
@@ -269,7 +353,8 @@ def main():
     for name in args.names:
         if name not in EXPERIMENTS:
             raise SystemExit(f"unknown experiment {name!r}; --list to see them all")
-        result = run(name, args.timesteps, args.seed, args.eval_episodes, args.results_dir)
+        result = run(name, args.timesteps, args.seed, args.eval_episodes,
+                     args.results_dir, args.eval_every, args.curve_episodes)
         print(json.dumps(result))
         sys.stdout.flush()
 

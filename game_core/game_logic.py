@@ -145,7 +145,17 @@ class RewardConfig:
     timeout_penalty: float = 0.0       ## see LanderEnvironment.step
 
     ## Impact speed at or below which touching the pad counts as a landing.
+    ## math.inf disables the gate, restoring the behaviour where any touch of
+    ## the pad counted -- kept reachable so the ablation can measure it.
     landing_speed_limit: float = 1.0
+
+    ## Which shaping to apply between terminal states:
+    ##   "potential" -- phi(s') - phi(s) over the continuous potential above
+    ##   "banded"    -- the original +/-10 per distance band crossed
+    ##   "none"      -- no shaping at all, terminal rewards only
+    ## Only "potential" is a recommendation; the other two exist so the ablation
+    ## can train against them instead of arguing about them.
+    shaping: str = "potential"
 
 
 REWARD: RewardConfig = RewardConfig()
@@ -207,14 +217,43 @@ def phi(gs) -> float:
              + REWARD.w_speed * excess / SPEED_SCALE)
 
 
+def banded_shaping(gs) -> float:
+    """The original shaping, kept verbatim so the ablation can train against it.
+
+    Not a potential despite living next to one: it mutates gs and its return is
+    used as the reward directly rather than as a difference. Bands are
+    initial_distance / 10 wide, which measured 54-125px, so band 0 covers the
+    whole final approach and pays nothing inside it.
+    """
+    d = distance(gs)
+    band = int(d / gs.multiple)
+    if band < gs.prev_band:
+        gs.prev_band = band
+        return 10.0
+    if band > gs.prev_band:
+        gs.prev_band = band
+        return -10.0
+    return 0.0
+
+
+def shaping_reward(gs) -> float:
+    """Whatever REWARD.shaping asks for, plus the per-step costs."""
+    if REWARD.shaping == "banded":
+        return banded_shaping(gs)
+    if REWARD.shaping == "none":
+        return 0.0
+    current_phi: float = phi(gs)
+    shaped: float = current_phi - gs.prev_phi
+    gs.prev_phi = current_phi
+    return shaped
+
+
 def calculate_reward_and_done(gs, drawing: bool = True):
         ## Potential-based shaping, plus the cost of living and of burning fuel.
         ## See RewardConfig for why both exist.
-        current_phi: float = phi(gs)
-        reward: float = current_phi - gs.prev_phi - REWARD.time_penalty
+        reward: float = shaping_reward(gs) - REWARD.time_penalty
         if gs.is_thrusting:
             reward -= REWARD.fuel_penalty
-        gs.prev_phi = current_phi
 
         done: bool = False
         info: Dict[str, Any] = {}
@@ -285,6 +324,9 @@ class GameState:
         ## run_game_frame so the reward can charge fuel for it.
         self.is_thrusting: bool = False
         self.prev_phi: float = phi(self)
+        ## Only read when REWARD.shaping == "banded". Cheap to keep current.
+        self.multiple: float = max(distance(self), 1e-9) / 10.0
+        self.prev_band: int = 10
 
     def seed(self, seed: int) -> None:
         """Reseed the game RNG so the next reset is reproducible."""
@@ -317,6 +359,8 @@ class GameState:
         ## Must be restored like the positions above. Left stale, the first step
         ## of an episode is paid against the previous episode's final state.
         self.prev_phi = phi(self)
+        self.multiple = max(distance(self), 1e-9) / 10.0
+        self.prev_band = 10
 
     def get_observation(self) -> ndarray:
         """Build an observation from the current state without advancing the game.

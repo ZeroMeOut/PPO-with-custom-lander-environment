@@ -138,27 +138,90 @@ the same yardstick for every row regardless of the reward each was trained on.
 | new reward, capped spawn, original booster, 3M | 38.7% | 0.792 | 116 landed, 49 too fast, 104 timed out |
 | **new reward, capped spawn, 0.01 booster, 3M** | **100.0%** | 0.257 | 300 landed |
 
-The last row is `pretrained/ppo_lander_3M.zip`, which TEST MODE lists without
-you having to train anything. It repeats on a second seed (300/300 again), holds
-up on 400 unseen seeds (400/400), and it does use the boosters: thrust on 57% of
-steps. It also degrades in the direction you would hope rather than falling over
--- the same model scores 96.7% at a 500px cap and **73.0% on the original
-uncapped spawn range** it was never trained on.
+That last row is one run. See the caveat under it before reading it as the
+expected result of training.
 
-Two things worth knowing before trusting any of the middle rows: single seed
-runs at 1M steps disagreed with each other by more than several of the effects
-being measured, and every one of the early configurations converged on hovering,
-which looked like a hyperparameter problem for a long time and was not.
+The last row is `pretrained/ppo_lander_3M.zip`, which TEST MODE lists without
+you having to train anything. It holds up on unseen seeds (399/400 on a fresh
+set), it does use the boosters -- thrust on 57% of steps -- and it degrades in
+the direction you would hope rather than falling over: 96.7% at a 500px cap and
+**73.0% on the original uncapped spawn range** it was never trained on.
+
+**That 100% is the checkpoint, not the recipe.** Training this exact config six
+times gives 0.60 +/- 0.21 soft landings, ranging from 0.23 to 0.86. The shipped
+model is the lucky tail of that distribution, not the typical outcome, and the
+"repeats on a second seed" claim an earlier version of this file made was two
+fortunate draws on a machine that happened to produce them. Training is
+deterministic for a given seed on a given box -- re-running seed 0 reproduces to
+three decimals -- but the same seed on different hardware lands somewhere else
+in the range entirely. Expect a good run to need a few attempts.
+
+## Which part of the reward did the work
+
+40 training runs of 3M steps, ablating one reward term at a time against the full
+reward, with the task held fixed at the setting that is actually flyable so the
+only thing varying is the reward. `p` is an exact permutation test against the
+control; at 2 seeds vs 6 the smallest reachable value is 0.036.
+
+| variant | n | soft landings | p | touchdown speed | p | timeout rate | p |
+|---|---|---|---|---|---|---|---|
+| FULL REWARD (control) | 6 | 0.60 ±0.21 | | 0.47 ±0.16 | | 0.02 ±0.05 | |
+| minus time penalty | 4 | 0.55 ±0.38 | 0.84 | 0.62 ±0.14 | 0.25 | 0.25 ±0.43 | 0.40 |
+| minus landing speed gate | 6 | 0.58 ±0.36 | 0.94 | 0.70 ±0.40 | 0.27 | 0.02 ±0.03 | 0.73 |
+| minus fuel penalty | 6 | 0.45 ±0.36 | 0.43 | 0.54 ±0.16 | 0.50 | 0.33 ±0.47 | 0.38 |
+| minus fuel AND time | 2 | 0.22 ±0.21 | 0.14 | 0.23 ±0.09 | 0.14 | **0.49 ±0.02** | **0.036** |
+| minus approach gating | 6 | 0.22 ±0.36 | 0.08 | 0.60 ±0.40 | 0.62 | **0.60 ±0.45** | 0.06 |
+| minus speed term in phi | 3 | **0.01 ±0.01** | **0.012** | **3.41 ±0.09** | **0.036** | 0.27 ±0.38 | 0.33 |
+| banded shaping instead | 2 | **0.00** | **0.036** | **3.39 ±0.06** | **0.036** | 0.00 | 0.79 |
+| no shaping at all | 2 | **0.00** | **0.036** | **3.45** | 0.14 | 0.30 ±0.30 | 0.25 |
+| THE ORIGINAL REWARD | 3 | **0.00** | **0.012** | **3.00 ±0.22** | **0.012** | 0.00 | 0.75 |
+
+Read the touchdown speed column first. It splits cleanly in two, with nothing in
+between: every variant that keeps a speed term in the shaping arrives at
+0.47-0.70 px/frame, and every variant that drops it arrives at 3.00-3.45, where
+a free fall touches down at 3.44.
+
+**One term does almost all of the work: speed in the shaping.** Take it out and
+the lander stops braking entirely, whatever else is present. The three other
+rows that score zero -- bands, no shaping, and the original reward -- are all
+just different ways of having no speed term.
+
+**Second: that speed term has to be distance-gated.** Charged flat it paralyses
+the agent instead, and timeouts go from 2% to 60%. So the pair is the unit: the
+speed term teaches braking, the gating stops it becoming a reason to hover.
+Neither half works alone.
+
+**The landing speed gate does not teach braking.** Removing it costs nothing
+measurable (0.58 vs 0.60, p=0.94) because the shaping is already doing that job.
+It still belongs, because it is what *defines* success -- without it the agent
+reports 0.82 "landed_ok" while only 0.58 of those are actually soft -- but it is
+bookkeeping, not a training signal. A terminal penalty tells the agent it failed
+and gives it no gradient for fixing that; the shaping does.
+
+**Fuel and time are substitutes, and neither is individually resolvable.**
+Removing either alone lands inside the noise; removing both together is the one
+clearly harmful edit, pushing timeouts to 0.49 (p=0.036). Something has to price
+stalling, but it does not matter much which.
+
+The honest caveat on everything above: seed variance is the dominant effect in
+this project. The control alone spans 0.23-0.86. Only the touchdown-speed split
+is large enough to be beyond argument; the ordering among the middle rows should
+be read as a hint, not a result.
 
 ## Running the experiments
 
     python tools/experiment.py --list
     python tools/experiment.py final --timesteps 3000000
 
+    # the ablation above: one term at a time, several seeds each
+    python tools/experiment.py abl_full --seed 0 --timesteps 3000000 --eval-every 500000
+    python tools/ablation_report.py results/ablation
+
 Each entry in `EXPERIMENTS` is one hypothesis, and scoring is deliberately
 independent of the reward under test -- it reads the final game state -- so runs
-with different rewards stay comparable. Single-seed runs at 1M steps disagreed
-with each other by more than some of the effects being measured, so treat one
-run as a hint and not a result.
+with different rewards stay comparable. Single-seed runs disagreed with each other by
+more than most of the effects being measured, so treat one run as a hint and not
+a result: the ablation above needed six seeds per variant before anything but
+the largest effect separated from noise.
 
     python -m unittest discover -s tests

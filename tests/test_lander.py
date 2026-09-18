@@ -19,9 +19,9 @@ os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 import numpy as np
 
 import game_core.game_logic as game_logic
-from game_core.game_logic import (GameState, RewardConfig, calculate_reward_and_done,
-                                  phi, set_reward_config, set_random_target,
-                                  set_spawn_max_gap)
+from game_core.game_logic import (GameState, RewardConfig, banded_shaping,
+                                  calculate_reward_and_done, phi, set_reward_config,
+                                  set_random_target, set_spawn_max_gap)
 from env.lander_env import LanderEnvironment
 
 
@@ -257,6 +257,54 @@ class TestEnvironment(RewardConfigCase):
             if terminated or truncated:
                 break
         self.assertTrue(terminated or truncated)
+
+
+class TestShapingModes(RewardConfigCase):
+    """The ablation trains against these, so they have to mean what they say."""
+
+    def descend(self, mode, steps=120):
+        set_reward_config(replace(RewardConfig(), shaping=mode,
+                                  time_penalty=0.0, fuel_penalty=0.0))
+        gs = GameState(seed=4)
+        total = 0.0
+        for _ in range(steps):
+            gs.player.y += 2.0
+            gs.player.rect.topleft = (int(gs.player.x), int(gs.player.y))
+            reward, done, _ = calculate_reward_and_done(gs, drawing=False)
+            total += reward
+            if done:
+                break
+        return total
+
+    def test_none_pays_nothing_between_terminals(self):
+        self.assertEqual(self.descend("none"), 0.0)
+
+    def test_banded_pays_in_steps_of_ten(self):
+        total = self.descend("banded")
+        self.assertNotEqual(total, 0.0)
+        self.assertAlmostEqual(total % 10, 0.0, places=6)
+
+    def test_potential_is_the_default(self):
+        self.assertEqual(RewardConfig().shaping, "potential")
+        self.assertNotEqual(self.descend("potential"), 0.0)
+
+    def test_banded_has_no_speed_term(self):
+        """The ablation's central finding rests on this: the bands cannot see
+        velocity, so two states differing only in speed are paid the same."""
+        set_reward_config(replace(RewardConfig(), shaping="banded"))
+        slow, fast = GameState(seed=6), GameState(seed=6)
+        fast.player.y_acceleration = 3.0
+        for gs in (slow, fast):
+            gs.player.y += 60.0
+            gs.player.rect.topleft = (int(gs.player.x), int(gs.player.y))
+        self.assertEqual(banded_shaping(slow), banded_shaping(fast))
+
+    def test_potential_does_see_speed(self):
+        set_reward_config(RewardConfig())
+        slow, fast = GameState(seed=6), GameState(seed=6)
+        fast.player.y_acceleration = 3.0
+        self.assertNotEqual(phi(slow), phi(fast))
+        self.assertLess(phi(fast), phi(slow))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,113 @@
+{
+  "name": "abl_no_fuel",
+  "seed": 1,
+  "timesteps": 3000000,
+  "train_seconds": 1221.0,
+  "reward": {
+    "w_dist": 100.0,
+    "w_speed": 50.0,
+    "approach_scale": 200.0,
+    "approach_v_min": 0.2,
+    "approach_v_max": 2.5,
+    "time_penalty": 0.05,
+    "fuel_penalty": 0.0,
+    "landing_bonus": 200.0,
+    "too_fast_penalty": 50.0,
+    "crash_penalty": 100.0,
+    "high_penalty": 100.0,
+    "oob_penalty": 100.0,
+    "timeout_penalty": 0.0,
+    "landing_speed_limit": 1.0,
+    "shaping": "potential"
+  },
+  "ppo": {
+    "policy": "MlpPolicy",
+    "n_envs": 8,
+    "n_steps": 256,
+    "batch_size": 64,
+    "n_epochs": 10,
+    "learning_rate": 0.0003,
+    "gamma": 0.999,
+    "gae_lambda": 0.98,
+    "ent_coef": 0.01,
+    "vf_coef": 0.5,
+    "clip_range": 0.2
+  },
+  "max_episode_steps": 1000,
+  "random_target": true,
+  "spawn_max_gap": 250,
+  "acceleration": 0.01,
+  "curve": [
+    {
+      "timesteps": 500000,
+      "soft_landing_rate": 0.4,
+      "on_pad_rate": 0.4,
+      "mean_impact_speed": 0.243,
+      "outcomes": {
+        "crashed": 26,
+        "landed_ok": 40,
+        "timeout": 14,
+        "out_of_horizontal_bounds": 20
+      }
+    },
+    {
+      "timesteps": 1000000,
+      "soft_landing_rate": 0.0,
+      "on_pad_rate": 0.0,
+      "mean_impact_speed": null,
+      "outcomes": {
+        "timeout": 36,
+        "out_of_horizontal_bounds": 42,
+        "crashed": 22
+      }
+    },
+    {
+      "timesteps": 1500000,
+      "soft_landing_rate": 0.0,
+      "on_pad_rate": 0.0,
+      "mean_impact_speed": null,
+      "outcomes": {
+        "timeout": 100
+      }
+    },
+    {
+      "timesteps": 2000000,
+      "soft_landing_rate": 0.14,
+      "on_pad_rate": 0.14,
+      "mean_impact_speed": 0.377,
+      "outcomes": {
+        "timeout": 41,
+        "crashed": 45,
+        "landed_ok": 14
+      }
+    },
+    {
+      "timesteps": 2500000,
+      "soft_landing_rate": 0.0,
+      "on_pad_rate": 0.0,
+      "mean_impact_speed": null,
+      "outcomes": {
+        "timeout": 95,
+        "out_of_horizontal_bounds": 5
+      }
+    },
+    {
+      "timesteps": 3000000,
+      "soft_landing_rate": 0.0,
+      "on_pad_rate": 0.0,
+      "mean_impact_speed": null,
+      "outcomes": {
+        "timeout": 100
+      }
+    }
+  ],
+  "soft_landing_rate": 0.0,
+  "on_pad_rate": 0.0,
+  "mean_impact_speed": null,
+  "mean_return": -14.25,
+  "mean_length": 997.5,
+  "outcomes": {
+    "timeout": 299,
+    "out_of_horizontal_bounds": 1
+  }
+}
