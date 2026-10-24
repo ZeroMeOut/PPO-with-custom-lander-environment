@@ -53,160 +53,66 @@ I am trying to make the code and agent better now that I got a Claude code subsc
 
 ## Why it wasn't using its boosters
 
-It was a reward problem, and then it was a physics problem. Both were measured
-rather than guessed, with `tools/experiment.py`.
+Short answer: nothing in the reward mentioned velocity. `landed_ok` only checked
+that the lander touched the pad, at any speed, and the shaping only knew about
+distance. Trained a million steps on that reward the policy fell for 309 steps
+and hit the ground at 2.524 px/frame -- a free fall takes 307 steps and arrives
+at 2.53. It had not learned to fly at all, because falling scored exactly as
+well. Zero soft landings in 300 episodes.
 
-**Nothing ever asked it to brake.** `landed_ok` only checked that the lander
-touched the pad, at any speed, and the banded shaping had no speed term, so
-nothing anywhere in the reward mentioned velocity. A policy trained for 1M steps
-on it scored a 0.0% soft-landing rate over 300 episodes at a mean impact speed
-of 2.524 px/frame -- free fall terminal velocity is 2.53, and its mean episode
-length was 309 against a 307 step free fall. It had not learned to fly at all,
-because falling scored exactly as well. Touching the pad now needs an impact
-speed under `landing_speed_limit`, and the potential charges for excess speed.
+That was one of three separate problems. The second was that stalling in mid air
+scored better than committing to a landing. The third, and the real ceiling, was
+that **81% of episodes started with the pad further away than the lander could
+physically reach** -- the booster covers 118px of ground during a free fall while
+the mean spawn gap was 391px. That is not a policy failing to learn.
 
-**The bands had no gradient where it mattered.** `phi` paid a flat +/-10 for
-crossing a distance band and 0 otherwise, and the bands measured 54-125px wide,
-so the whole final approach sat inside band 0 with no signal at all. Band width
-was derived from the spawn distance, so identical progress paid differently from
-episode to episode, and because `prev_band` snapped on any change, crossing five
-bands at once paid +10 where crossing them one at a time paid +50. It is also
-not a potential despite the name -- it mutates state and is returned as the
-reward directly. It is a continuous potential now, applied as `phi(s') - phi(s)`.
+A 40-run ablation then narrowed down which reward change actually did the work:
 
-**Stalling paid better than landing.** Timing out cost nothing and the distance
-shaping was already banked, so hovering near the pad beat committing to a
-landing unless the agent could already land more than about half the time.
-Hovering was also free, because thrust had no cost. There is a `fuel_penalty`
-per frame of thrust now, which is what real Lunar Lander charges, and a small
-`time_penalty`.
+| variant | soft landings | touchdown speed |
+|---|---|---|
+| full reward (control, 6 seeds) | 0.60 ±0.21 | 0.47 |
+| minus the speed term in the shaping | **0.01** | **3.41** |
+| the original reward, on the fixed task | **0.00** | **3.00** |
 
-**Most episodes could not be flown.** This turned out to be the real ceiling.
-The booster accelerates at 0.005 px/frame², so an accelerate-then-decelerate
-crossing covers only `0.00125 * T²` px -- 118px during the 307 frame free fall.
-The lander and the pad were drawn independently from x in [20, 1200], a mean gap
-of 391px and a p90 of 804px, so **81% of episodes started with the pad further
-away than the lander could reach**. The trained agent scored 12% inside 200px
-and 0.0% at every distance beyond it. That is not a policy failing to learn. So
-`SPAWN_MAX_GAP` caps how far the pad can be placed from the lander, and
-`ACCELERATION` is a named constant you can raise instead.
+Touchdown speed splits in two with nothing in between: keep a speed term in the
+shaping and the lander arrives at 0.47-0.70 px/frame, drop it and it arrives at
+3.00-3.45, where a free fall is 3.44. One term does nearly all of the work, and
+it has to be gated by distance or it paralyses the agent instead.
 
-Set `SPAWN_MAX_GAP = None`, `ACCELERATION = 0.005` and `fuel_penalty = 0.0` to
-get the old task back.
+**[Read the full write-up -> `docs/reward-investigation.md`](docs/reward-investigation.md)**
+-- all three problems with their measurements, a wrong turn that cost three
+rounds of sweeps, the whole ablation table with permutation tests, the other
+bugs found along the way, and why "100%" is the checkpoint rather than the
+recipe.
 
-## A wrong turn worth recording (why `approach_scale` exists)
-
-`approach_scale` fixes a problem the rewrite introduced, not one the bands had.
-
-Replacing the bands with `phi = -(w_dist*d/DIST_SCALE + w_speed*v/SPEED_SCALE)`
-made distance and speed independent penalties. But speed is the derivative of
-distance: closing the gap *requires* carrying speed, so the two terms fight, and
-the balance between them decides how badly. With `w_dist=100, DIST_SCALE=1400`
-and `w_speed=50, SPEED_SCALE=3`, carrying one unit of speed cost 16.67 of
-potential while closing a pixel earned 0.0714, so **233px had to be closed
-before moving at all was worth it**. A lander hovering nearer than that could
-not construct any route to the pad whose shaping paid for the speed it needed.
-Traced along a textbook approach from 400px, the potential falls from -28.6 to
--47.6 before recovering: hundreds of steps of negative reward for flying
-correctly, with the refund arriving only if the approach finishes. Every config
-tried against it converged on hovering, which looked like a hyperparameter
-problem for three rounds of sweeps and was not one.
-
-Worth noting the same functional form on an older commit used `-(1.0*d + 8.0*v)`
--- break-even 8px rather than 233px. The form was never the problem; scaling
-distance by 1400 and speed by only 3 inflated the speed term about 29-fold.
-
-Two ways out: weight the terms sanely, or stop charging for speed that is
-appropriate to the distance. This takes the second, since it also states the
-thing you actually want -- travel fast when far, arrive slow when close:
-
-    v_ref(d) = clamp(d / approach_scale, approach_v_min, approach_v_max)
-    phi = -(w_dist * d / DIST_SCALE + w_speed * max(0, v - v_ref(d)) / SPEED_SCALE)
-
-The valley drops from 19.0 deep to 2.4, and the residual is the genuine cost of
-arriving too hot. Timeouts went from 300/300 to 44/300 on the next run.
+To get the old task back: `SPAWN_MAX_GAP = None`, `ACCELERATION = 0.005`,
+`fuel_penalty = 0.0`, `landing_speed_limit = math.inf`, `shaping = "banded"`.
 
 ## Where it ended up
 
-Scored over 300 episodes as "landed on the pad at under 1.0 px/frame", which is
-the same yardstick for every row regardless of the reward each was trained on.
+Scored over 300 episodes as "landed on the pad at under 1.0 px/frame", the same
+yardstick for every row regardless of the reward each was trained on.
 
-| run | soft landings | mean touchdown speed | how episodes ended |
-|---|---|---|---|
-| old reward, old hyperparameters, 1M | **0.0%** | 2.524 (free fall) | 256 crashed, 34 touched the pad, 10 out of bounds |
-| new reward, uncapped spawn, 1M | 2.7% | 1.100 | 175 crashed, 44 timed out, 42 reached the pad |
-| new reward, capped spawn, original booster, 3M | 38.7% | 0.792 | 116 landed, 49 too fast, 104 timed out |
-| **new reward, capped spawn, 0.01 booster, 3M** | **100.0%** | 0.257 | 300 landed |
+| run | soft landings | mean touchdown speed |
+|---|---|---|
+| old reward, old hyperparameters, 1M | **0.0%** | 2.524 (free fall) |
+| new reward, uncapped spawn, 1M | 2.7% | 1.100 |
+| new reward, capped spawn, original booster, 3M | 38.7% | 0.792 |
+| **new reward, capped spawn, 0.01 booster, 3M** | **100.0%** | 0.257 |
 
-That last row is one run. See the caveat under it before reading it as the
-expected result of training.
-
-The last row is `pretrained/ppo_lander_3M.zip`, which TEST MODE lists without
+That last row is `pretrained/ppo_lander_3M.zip`, which TEST MODE lists without
 you having to train anything. It holds up on unseen seeds (399/400 on a fresh
-set), it does use the boosters -- thrust on 57% of steps -- and it degrades in
-the direction you would hope rather than falling over: 96.7% at a 500px cap and
-**73.0% on the original uncapped spawn range** it was never trained on.
+set), uses thrust on 57% of steps, and degrades gracefully: 96.7% at a 500px cap
+and **73.0% on the original uncapped spawn range** it was never trained on.
 
 **That 100% is the checkpoint, not the recipe.** Training this exact config six
-times gives 0.60 +/- 0.21 soft landings, ranging from 0.23 to 0.86. The shipped
-model is the lucky tail of that distribution, not the typical outcome, and the
-"repeats on a second seed" claim an earlier version of this file made was two
-fortunate draws on a machine that happened to produce them. Training is
-deterministic for a given seed on a given box -- re-running seed 0 reproduces to
-three decimals -- but the same seed on different hardware lands somewhere else
-in the range entirely. Expect a good run to need a few attempts.
+times gives 0.60 ±0.21, ranging 0.23 to 0.86; the shipped model is the lucky
+tail. Training is deterministic per seed on a given machine, but the same seed on
+different hardware lands elsewhere in the range. Expect a good run to need a few
+attempts, and treat any single run in this project as a hint rather than a
+result -- the ablation needed six seeds per variant before anything but the
+largest effect separated from noise.
 
-## Which part of the reward did the work
-
-40 training runs of 3M steps, ablating one reward term at a time against the full
-reward, with the task held fixed at the setting that is actually flyable so the
-only thing varying is the reward. `p` is an exact permutation test against the
-control; at 2 seeds vs 6 the smallest reachable value is 0.036.
-
-| variant | n | soft landings | p | touchdown speed | p | timeout rate | p |
-|---|---|---|---|---|---|---|---|
-| FULL REWARD (control) | 6 | 0.60 ±0.21 | | 0.47 ±0.16 | | 0.02 ±0.05 | |
-| minus time penalty | 4 | 0.55 ±0.38 | 0.84 | 0.62 ±0.14 | 0.25 | 0.25 ±0.43 | 0.40 |
-| minus landing speed gate | 6 | 0.58 ±0.36 | 0.94 | 0.70 ±0.40 | 0.27 | 0.02 ±0.03 | 0.73 |
-| minus fuel penalty | 6 | 0.45 ±0.36 | 0.43 | 0.54 ±0.16 | 0.50 | 0.33 ±0.47 | 0.38 |
-| minus fuel AND time | 2 | 0.22 ±0.21 | 0.14 | 0.23 ±0.09 | 0.14 | **0.49 ±0.02** | **0.036** |
-| minus approach gating | 6 | 0.22 ±0.36 | 0.08 | 0.60 ±0.40 | 0.62 | **0.60 ±0.45** | 0.06 |
-| minus speed term in phi | 3 | **0.01 ±0.01** | **0.012** | **3.41 ±0.09** | **0.036** | 0.27 ±0.38 | 0.33 |
-| banded shaping instead | 2 | **0.00** | **0.036** | **3.39 ±0.06** | **0.036** | 0.00 | 0.79 |
-| no shaping at all | 2 | **0.00** | **0.036** | **3.45** | 0.14 | 0.30 ±0.30 | 0.25 |
-| THE ORIGINAL REWARD | 3 | **0.00** | **0.012** | **3.00 ±0.22** | **0.012** | 0.00 | 0.75 |
-
-Read the touchdown speed column first. It splits cleanly in two, with nothing in
-between: every variant that keeps a speed term in the shaping arrives at
-0.47-0.70 px/frame, and every variant that drops it arrives at 3.00-3.45, where
-a free fall touches down at 3.44.
-
-**One term does almost all of the work: speed in the shaping.** Take it out and
-the lander stops braking entirely, whatever else is present. The three other
-rows that score zero -- bands, no shaping, and the original reward -- are all
-just different ways of having no speed term.
-
-**Second: that speed term has to be distance-gated.** Charged flat it paralyses
-the agent instead, and timeouts go from 2% to 60%. So the pair is the unit: the
-speed term teaches braking, the gating stops it becoming a reason to hover.
-Neither half works alone.
-
-**The landing speed gate does not teach braking.** Removing it costs nothing
-measurable (0.58 vs 0.60, p=0.94) because the shaping is already doing that job.
-It still belongs, because it is what *defines* success -- without it the agent
-reports 0.82 "landed_ok" while only 0.58 of those are actually soft -- but it is
-bookkeeping, not a training signal. A terminal penalty tells the agent it failed
-and gives it no gradient for fixing that; the shaping does.
-
-**Fuel and time are substitutes, and neither is individually resolvable.**
-Removing either alone lands inside the noise; removing both together is the one
-clearly harmful edit, pushing timeouts to 0.49 (p=0.036). Something has to price
-stalling, but it does not matter much which.
-
-The honest caveat on everything above: seed variance is the dominant effect in
-this project. The control alone spans 0.23-0.86. Only the touchdown-speed split
-is large enough to be beyond argument; the ordering among the middle rows should
-be read as a hint, not a result.
 
 ## Running the experiments
 
@@ -219,9 +125,6 @@ be read as a hint, not a result.
 
 Each entry in `EXPERIMENTS` is one hypothesis, and scoring is deliberately
 independent of the reward under test -- it reads the final game state -- so runs
-with different rewards stay comparable. Single-seed runs disagreed with each other by
-more than most of the effects being measured, so treat one run as a hint and not
-a result: the ablation above needed six seeds per variant before anything but
-the largest effect separated from noise.
+with different rewards stay comparable.
 
     python -m unittest discover -s tests

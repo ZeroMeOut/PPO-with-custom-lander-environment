@@ -46,13 +46,14 @@ SPAWN_MAX_GAP: Optional[int] = 250
 ## equal, so the lander can decelerate exactly as fast as it falls.
 ##
 ## The game shipped with 0.005 and that is the one number here that changes how
-## it feels to play, so it is worth being explicit about why it moved. Over 3M
-## steps on the capped geometry, 0.005 lands 38.7% of episodes while 0.01 lands
-## 100% of them, twice, on two seeds. At 0.005 a free fall lasts 307 frames and
-## covers 118px of ground, which is less than the lander is asked to cross; at
-## 0.01 it covers 209px and the task closes. Put it back to 0.005 if you prefer
-## the original handling -- 38.7% is still a lander that flies, and the reward
-## fixes are what got it there.
+## it feels to play, so it is worth being explicit about why it moved. At 0.005 a
+## free fall lasts 307 frames and covers 118px of ground, which is less than the
+## lander is asked to cross; at 0.01 it covers 209px and the task closes. Over 3M
+## steps on the capped geometry 0.005 scored 38.7% against 100% for 0.01 -- but
+## those are one run each, and this config varies 0.23-0.86 across seeds, so read
+## that as a hint rather than a measurement. Put it back to 0.005 if you prefer
+## the original handling: 38.7% is still a lander that flies, and the reward
+## fixes are what got it there. See docs/reward-investigation.md.
 ACCELERATION: float = 0.01
 
 ## get_font re-reads the .ttf from disk on every call, so build the HUD font once.
